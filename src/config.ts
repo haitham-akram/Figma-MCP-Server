@@ -7,6 +7,7 @@ interface Config {
     PORT: number;
     HOST: string;
     LOG_LEVEL: string;
+    FIGMA_ACCESS_TOKEN: string;
 }
 
 /**
@@ -56,6 +57,19 @@ function validateLogLevel(level: string | undefined, defaultLevel: string): stri
 }
 
 /**
+ * Validate FIGMA_ACCESS_TOKEN environment variable
+ */
+function validateFigmaToken(token: string | undefined): string {
+    if (!token || token.trim().length === 0) {
+        throw new Error(
+            'Invalid FIGMA_ACCESS_TOKEN: must be set to a valid Figma Personal Access Token'
+        );
+    }
+
+    return token.trim();
+}
+
+/**
  * Load and validate configuration
  */
 function loadConfig(): Config {
@@ -63,11 +77,13 @@ function loadConfig(): Config {
         const PORT = validatePort(process.env.PORT, 5000);
         const HOST = validateHost(process.env.HOST, '127.0.0.1');
         const LOG_LEVEL = validateLogLevel(process.env.LOG_LEVEL, 'info');
+        const FIGMA_ACCESS_TOKEN = validateFigmaToken(process.env.FIGMA_ACCESS_TOKEN);
 
         return {
             PORT,
             HOST,
             LOG_LEVEL,
+            FIGMA_ACCESS_TOKEN,
         };
     } catch (error) {
         console.error('Configuration Error:', error instanceof Error ? error.message : error);

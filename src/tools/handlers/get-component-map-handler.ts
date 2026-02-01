@@ -169,7 +169,7 @@ function extractVariants(
 ): ComponentVariant[] | undefined {
     // For component sets, extract variants from metadata
     if (node.type === 'COMPONENT_SET' && componentSets) {
-        const componentSetMeta = Object.values(componentSets).find((cs) => cs.key === node.id);
+        const componentSetMeta = componentSets[node.id];
         if (componentSetMeta?.variantProperties) {
             return Object.entries(componentSetMeta.variantProperties).map(([prop, value]) => ({
                 propertyName: prop,
@@ -180,13 +180,11 @@ function extractVariants(
 
     // For components and instances, check if they belong to a component set
     if ((node.type === 'COMPONENT' || node.type === 'INSTANCE') && components) {
-        const componentMeta = Object.values(components).find((c) => c.key === node.id);
+        const componentMeta = components[node.id];
         const componentSetId = componentMeta?.componentSetId;
 
         if (componentSetId && componentSets) {
-            const componentSet = Object.values(componentSets).find(
-                (cs) => cs.key === componentSetId
-            );
+            const componentSet = componentSets[componentSetId];
             if (componentSet?.variantProperties) {
                 return Object.entries(componentSet.variantProperties).map(([prop, value]) => ({
                     propertyName: prop,

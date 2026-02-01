@@ -73,7 +73,7 @@ export async function handleGetImplementationPlan(
     );
 
     // Analyze layout patterns across all components
-    const layoutGuidance = analyzeLayoutPatterns(componentMappings, normalizedNodes);
+    const layoutGuidance = analyzeLayoutPatterns(componentMappings);
 
     // Generate styling guidance based on tokens
     const stylingGuidance = generateStylingGuidance(tokens, normalizedNodes);
@@ -337,8 +337,8 @@ function generateComponentMappings(
             props,
             relatedTokens,
             notes: `Component type: ${component.type}. ${'description' in component && component.description
-                    ? `Description: ${component.description}`
-                    : ''
+                ? `Description: ${component.description}`
+                : ''
                 }`,
         };
     });
@@ -348,8 +348,7 @@ function generateComponentMappings(
  * Analyze layout patterns across all components
  */
 function analyzeLayoutPatterns(
-    componentMappings: ComponentMapping[],
-    normalizedNodes: NormalizedNode[]
+    componentMappings: ComponentMapping[]
 ): ImplementationPlanResponse['layoutGuidance'] {
     const layoutCounts: Record<string, number> = {
         flexbox: 0,

@@ -265,7 +265,7 @@ export interface Component {
     name: string;
     description: string;
     componentSetId?: string | null;
-    documentationLinks?: Array<{ url: string }>;
+    documentationLinks?: string[];
 }
 
 /**

@@ -13,17 +13,67 @@ interface Config {
 }
 
 /**
+ * Validate and parse a positive integer (> 0)
+ */
+function validatePositiveInt(
+    value: string | undefined,
+    defaultValue: number,
+    varName: string
+): number {
+    const parsed = parseInt(value || String(defaultValue), 10);
+
+    if (isNaN(parsed)) {
+        throw new Error(
+            `Invalid ${varName}: "${value}" is not a valid number. Using default: ${defaultValue}`
+        );
+    }
+
+    if (parsed <= 0) {
+        throw new Error(
+            `Invalid ${varName}: ${parsed} must be a positive integer (> 0). Using default: ${defaultValue}`
+        );
+    }
+
+    return parsed;
+}
+
+/**
+ * Validate and parse a non-negative integer (>= 0)
+ */
+function validateNonNegativeInt(
+    value: string | undefined,
+    defaultValue: number,
+    varName: string
+): number {
+    const parsed = parseInt(value || String(defaultValue), 10);
+
+    if (isNaN(parsed)) {
+        throw new Error(
+            `Invalid ${varName}: "${value}" is not a valid number. Using default: ${defaultValue}`
+        );
+    }
+
+    if (parsed < 0) {
+        throw new Error(
+            `Invalid ${varName}: ${parsed} must be a non-negative integer (>= 0). Using default: ${defaultValue}`
+        );
+    }
+
+    return parsed;
+}
+
+/**
  * Cache configuration
  */
 export const CACHE_CONFIG: CacheConfig = {
     enabled: process.env.CACHE_ENABLED !== 'false', // Enabled by default
-    defaultTTL: parseInt(process.env.CACHE_DEFAULT_TTL || '300', 10), // 5 minutes
-    maxSize: parseInt(process.env.CACHE_MAX_SIZE || '100', 10), // 100 entries
+    defaultTTL: validateNonNegativeInt(process.env.CACHE_DEFAULT_TTL, 300, 'CACHE_DEFAULT_TTL'), // 5 minutes
+    maxSize: validatePositiveInt(process.env.CACHE_MAX_SIZE, 100, 'CACHE_MAX_SIZE'), // 100 entries
     ttlByType: {
-        file: parseInt(process.env.CACHE_FILE_TTL || '600', 10),       // 10 minutes
-        components: parseInt(process.env.CACHE_COMPONENTS_TTL || '300', 10), // 5 minutes
-        tokens: parseInt(process.env.CACHE_TOKENS_TTL || '300', 10),   // 5 minutes
-        plan: parseInt(process.env.CACHE_PLAN_TTL || '180', 10),       // 3 minutes
+        file: validateNonNegativeInt(process.env.CACHE_FILE_TTL, 600, 'CACHE_FILE_TTL'),       // 10 minutes
+        components: validateNonNegativeInt(process.env.CACHE_COMPONENTS_TTL, 300, 'CACHE_COMPONENTS_TTL'), // 5 minutes
+        tokens: validateNonNegativeInt(process.env.CACHE_TOKENS_TTL, 300, 'CACHE_TOKENS_TTL'),   // 5 minutes
+        plan: validateNonNegativeInt(process.env.CACHE_PLAN_TTL, 180, 'CACHE_PLAN_TTL'),       // 3 minutes
     },
 };
 

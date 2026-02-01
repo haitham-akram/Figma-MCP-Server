@@ -410,7 +410,8 @@ function mapCounterAxisAlign(node: any): FlexboxRules['alignItems'] {
  * Extract padding from Auto Layout
  */
 function extractPadding(node: any): FlexboxRules['padding'] | undefined {
-    if (node.paddingTop || node.paddingRight || node.paddingBottom || node.paddingLeft) {
+    if (node.paddingTop !== undefined || node.paddingRight !== undefined ||
+        node.paddingBottom !== undefined || node.paddingLeft !== undefined) {
         return {
             top: node.paddingTop || 0,
             right: node.paddingRight || 0,
@@ -420,7 +421,6 @@ function extractPadding(node: any): FlexboxRules['padding'] | undefined {
     }
     return undefined;
 }
-
 /**
  * Detect grid pattern in children (2D repetition)
  */
@@ -678,20 +678,29 @@ function mapNodeTypeToVisualType(type: string): VisualElement['type'] {
 export function buildComponentHierarchy(nodes: FigmaNode[]): Map<NodeId, NodeId> {
     const hierarchy = new Map<NodeId, NodeId>();
 
-    function traverse(node: FigmaNode, parentId?: NodeId) {
+    // Iterative traversal using a stack to avoid stack overflow on deep trees
+    const stack: Array<{ node: FigmaNode; parentId?: NodeId }> = [];
+
+    // Initialize stack with root nodes
+    for (const node of nodes) {
+        stack.push({ node, parentId: undefined });
+    }
+
+    // Process stack iteratively
+    while (stack.length > 0) {
+        const { node, parentId } = stack.pop()!;
+
+        // Set hierarchy relationship if parent exists
         if (parentId) {
             hierarchy.set(node.id, parentId);
         }
 
+        // Push children to stack with current node as parent
         if ('children' in node && node.children) {
             for (const child of node.children) {
-                traverse(child, node.id);
+                stack.push({ node: child, parentId: node.id });
             }
         }
-    }
-
-    for (const node of nodes) {
-        traverse(node);
     }
 
     return hierarchy;

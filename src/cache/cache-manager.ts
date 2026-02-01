@@ -34,7 +34,7 @@ export class CacheManager {
             return;
         }
 
-        const ttl = type ? this.config.ttlByType[type] : this.config.defaultTTL;
+        const ttl = (type && this.config.ttlByType[type]) ?? this.config.defaultTTL;
         await this.provider.set(key, value, ttl);
     }
 
@@ -91,7 +91,7 @@ export class CacheManager {
         if (filters && Object.keys(filters).length > 0) {
             const filterStr = Object.entries(filters)
                 .sort(([a], [b]) => a.localeCompare(b))
-                .map(([k, v]) => `${k}=${v}`)
+                .map(([k, v]) => `${k}=${JSON.stringify(v)}`)
                 .join(',');
             return `${base}:${filterStr}`;
         }

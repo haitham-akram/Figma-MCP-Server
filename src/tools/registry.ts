@@ -198,13 +198,20 @@ export async function executeTool(
                     message = `Figma API error: ${error.message}`;
             }
 
+            // Log full error details server-side for debugging
+            console.error('[Figma API Error]', {
+                status: error.status,
+                statusText: error.statusText,
+                response: error.response,
+            });
+
             throw {
                 code,
                 message,
                 data: {
                     status: error.status,
                     statusText: error.statusText,
-                    response: error.response,
+                    // Omit raw response to prevent leaking sensitive Figma API details
                 },
             };
         }

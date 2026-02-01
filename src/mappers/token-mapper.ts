@@ -244,7 +244,7 @@ function generateNeutralColorName(brightness: number, index: number): string {
     if (brightness > 0.95) return `white${index > 0 ? `-${index}` : ''}`;
     if (brightness < 0.05) return `black${index > 0 ? `-${index}` : ''}`;
 
-    // Gray scale from 100 (darkest) to 900 (lightest)
+    // Gray scale from 100 (lightest) to 900 (darkest)
     const scale = 900 - Math.round(brightness * 800);
     return `gray-${scale}`;
 }

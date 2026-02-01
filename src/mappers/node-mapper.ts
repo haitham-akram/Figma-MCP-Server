@@ -371,7 +371,7 @@ function extractFlexboxRules(node: FrameNode): FlexboxRules {
         direction,
         justifyContent,
         alignItems,
-        gap: (node as any).itemSpacing || 0,
+        gap: (node as { itemSpacing?: number }).itemSpacing ?? 0,
         padding: extractPadding(node),
     };
 }

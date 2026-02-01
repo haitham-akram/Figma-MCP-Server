@@ -386,6 +386,8 @@ function mapPrimaryAxisAlign(node: any): FlexboxRules['justifyContent'] {
         'CENTER': 'center',
         'MAX': 'flex-end',
         'SPACE_BETWEEN': 'space-between',
+        'SPACE_AROUND': 'space-around',
+        'SPACE_EVENLY': 'space-evenly',
     };
     return alignMap[align] || 'flex-start';
 }

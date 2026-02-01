@@ -1,0 +1,119 @@
+/**
+ * Get Design Tokens Handler
+ * Normalizes nodes and infers design token patterns
+ */
+
+import { FigmaClient } from '../../clients/figma-client.js';
+import { GetDesignTokensInput } from '../figma/get-design-tokens.js';
+import { DesignTokensResponse, DesignToken } from '../../types/figma.js';
+import { FigmaNode } from '../../types/figma-api.js';
+import { NormalizedNode } from '../../types/normalized.js';
+import { normalizeNode } from '../../mappers/node-mapper.js';
+import { inferDesignTokens } from '../../mappers/token-mapper.js';
+
+/**
+ * Maximum traversal depth for node normalization
+ */
+const MAX_TRAVERSAL_DEPTH = 12;
+
+/**
+ * Handle getDesignTokens tool execution
+ * 
+ * @param input - Tool input parameters
+ * @param figmaClient - Figma API client instance
+ * @returns Design tokens response with pagination
+ */
+export async function handleGetDesignTokens(
+    input: GetDesignTokensInput,
+    figmaClient: FigmaClient
+): Promise<DesignTokensResponse> {
+    const { fileKey, version, tokenType, tokenName, limit = 100, offset = 0 } = input;
+
+    // Fetch file data from Figma API
+    const fileData = await figmaClient.getFile(fileKey, { version });
+
+    // Traverse and normalize all nodes using BFS
+    const normalizedNodes = traverseAndNormalize(fileData.document);
+
+    console.log(`Normalized ${normalizedNodes.length} nodes for token inference`);
+
+    // Infer design tokens from normalized nodes
+    const allTokens = inferDesignTokens(normalizedNodes);
+
+    console.log(`Inferred ${allTokens.length} design tokens`);
+
+    // Apply filters
+    let filteredTokens = allTokens;
+
+    if (tokenType) {
+        filteredTokens = filteredTokens.filter((token) => token.category === tokenType);
+    }
+
+    if (tokenName) {
+        const lowerFilter = tokenName.toLowerCase();
+        filteredTokens = filteredTokens.filter((token) =>
+            token.name.toLowerCase().includes(lowerFilter)
+        );
+    }
+
+    // Calculate exact total count
+    const totalCount = filteredTokens.length;
+
+    // Apply pagination
+    const paginatedTokens = filteredTokens.slice(offset, offset + limit);
+
+    return {
+        tokens: paginatedTokens,
+        totalCount,
+        hasMore: offset + paginatedTokens.length < totalCount,
+    };
+}
+
+/**
+ * Traverse document tree and normalize nodes using BFS
+ * 
+ * @param root - Root node to start traversal
+ * @returns Array of normalized nodes
+ */
+function traverseAndNormalize(root: FigmaNode): NormalizedNode[] {
+    const normalizedNodes: NormalizedNode[] = [];
+    const queue: Array<{ node: FigmaNode; depth: number; parentId?: string }> = [
+        { node: root, depth: 0 },
+    ];
+    let maxDepthSeen = 0;
+
+    while (queue.length > 0) {
+        const { node, depth, parentId } = queue.shift()!;
+
+        // Track max depth
+        if (depth > maxDepthSeen) {
+            maxDepthSeen = depth;
+        }
+
+        // Log warning if exceeding safe threshold
+        if (depth === MAX_TRAVERSAL_DEPTH) {
+            console.warn(
+                `Normalization depth reached ${MAX_TRAVERSAL_DEPTH} levels at node "${node.name}" (${node.id}). Continuing traversal but performance may degrade.`
+            );
+        }
+
+        // Normalize node
+        const normalized = normalizeNode(node, parentId);
+        if (normalized) {
+            normalizedNodes.push(normalized);
+        }
+
+        // Enqueue children
+        if ('children' in node && node.children) {
+            for (const child of node.children) {
+                queue.push({ node: child, depth: depth + 1, parentId: node.id });
+            }
+        }
+    }
+
+    console.log(
+        `Node normalization complete: ${normalizedNodes.length} nodes normalized, max depth: ${maxDepthSeen}`
+    );
+
+    return normalizedNodes;
+}

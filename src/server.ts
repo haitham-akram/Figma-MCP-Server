@@ -22,6 +22,7 @@ import {
     getToolByName,
     getValidator,
     initializeSchemas,
+    initializeFigmaClient,
     executeTool,
 } from './tools/registry.js';
 
@@ -39,6 +40,15 @@ export function createServer(logLevel: string): FastifyInstance {
     const packageJson = JSON.parse(
         readFileSync(join(process.cwd(), 'package.json'), 'utf-8')
     );
+
+    // Initialize Figma client (must happen before schema initialization)
+    try {
+        initializeFigmaClient();
+        fastify.log.info('Figma client initialized');
+    } catch (error) {
+        fastify.log.error('Failed to initialize Figma client');
+        throw error;
+    }
 
     // Initialize and pre-compile tool schemas (fail fast on invalid schemas)
     try {

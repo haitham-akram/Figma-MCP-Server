@@ -5,7 +5,6 @@
  * Detects color palettes, typography scales, spacing systems, and other token patterns
  */
 
-import { FigmaNode, TextNode, FrameNode } from '../types/figma-api.js';
 import { NormalizedNode, TypographyIntent } from '../types/normalized.js';
 import { DesignToken, TokenCategory, TypographyValue } from '../types/figma.js';
 import { Color } from '../types/figma-base.js';

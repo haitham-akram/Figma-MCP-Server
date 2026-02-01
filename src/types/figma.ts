@@ -210,8 +210,22 @@ export interface ComponentMapping {
     componentName: string;
     /** Suggested code component name */
     suggestedCodeName: string;
-    /** Suggested file path */
+    /** Suggested file path (framework-agnostic) */
     suggestedFilePath: string;
+    /** Layout strategy detected from Figma */
+    layoutStrategy: {
+        type: 'flexbox' | 'grid' | 'absolute' | 'none';
+        reasoning: string;
+        details?: Record<string, any>;
+    };
+    /** Styling approach recommendations */
+    stylingApproach: {
+        recommendations: string[];
+        tokenUsage: string[];
+        complexityNotes?: string;
+    };
+    /** Complexity score (0-10, higher = more complex) */
+    complexityScore: number;
     /** Props/attributes to implement */
     props: Array<{
         name: string;
@@ -233,6 +247,39 @@ export interface ImplementationPlanResponse {
     steps: ImplementationStep[];
     /** Component to code mappings */
     componentMappings: ComponentMapping[];
+    /** Layout strategy guidance across the design */
+    layoutGuidance: {
+        primaryStrategy: string;
+        patterns: Array<{
+            pattern: string;
+            occurrences: number;
+            recommendation: string;
+        }>;
+        notes: string[];
+    };
+    /** Styling strategy guidance */
+    stylingGuidance: {
+        tokenCoverage: {
+            colors: number;
+            typography: number;
+            spacing: number;
+        };
+        recommendations: string[];
+        considerations: string[];
+    };
+    /** Open questions for developer consideration */
+    openQuestions: Array<{
+        question: string;
+        context: string;
+        relatedComponents?: NodeId[];
+    }>;
+    /** Implementation risks and warnings */
+    risks: Array<{
+        severity: 'low' | 'medium' | 'high';
+        risk: string;
+        impact: string;
+        mitigation: string;
+    }>;
     /** Overall implementation notes */
     notes?: string;
 }

@@ -12,6 +12,7 @@ import {
     FigmaFileVersionsResponse,
     FigmaApiErrorResponse,
 } from '../types/figma-api.js';
+import { CacheManager } from '../cache/cache-manager.js';
 
 /**
  * Figma API client configuration
@@ -70,11 +71,13 @@ export class FigmaClient {
     private readonly baseUrl: string;
     private readonly accessToken: string;
     private readonly httpClient: HttpClient;
+    private readonly cacheManager: CacheManager | null;
 
-    constructor(config: FigmaClientConfig, httpClient?: HttpClient) {
+    constructor(config: FigmaClientConfig, httpClient?: HttpClient, cacheManager?: CacheManager | null) {
         this.baseUrl = config.baseUrl || 'https://api.figma.com/v1';
         this.accessToken = config.accessToken;
         this.httpClient = httpClient || new DefaultHttpClient();
+        this.cacheManager = cacheManager === undefined ? null : cacheManager;
     }
 
     /**
@@ -136,6 +139,17 @@ export class FigmaClient {
             depth?: number;
         }
     ): Promise<FigmaFileResponse> {
+        // Check cache first (only cache simple requests without geometry/depth filters)
+        if (this.cacheManager && !options?.geometry && !options?.depth) {
+            const cacheKey = CacheManager.fileKey(fileKey, options?.version);
+            const cached = await this.cacheManager.get<FigmaFileResponse>(cacheKey);
+
+            if (cached) {
+                return cached;
+            }
+        }
+
+        // Cache miss or caching disabled - fetch from API
         const params = new URLSearchParams();
 
         if (options?.version) {
@@ -151,7 +165,15 @@ export class FigmaClient {
         const query = params.toString();
         const endpoint = `/files/${fileKey}${query ? `?${query}` : ''}`;
 
-        return this.request<FigmaFileResponse>(endpoint);
+        const response = await this.request<FigmaFileResponse>(endpoint);
+
+        // Cache the response (only for simple requests)
+        if (this.cacheManager && !options?.geometry && !options?.depth) {
+            const cacheKey = CacheManager.fileKey(fileKey, options?.version);
+            await this.cacheManager.set(cacheKey, response, 'file');
+        }
+
+        return response;
     }
 
     /**

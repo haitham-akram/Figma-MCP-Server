@@ -3,12 +3,29 @@
  * Validates and exports environment variables
  */
 
+import { CacheConfig } from './cache/types.js';
+
 interface Config {
     PORT: number;
     HOST: string;
     LOG_LEVEL: string;
     FIGMA_ACCESS_TOKEN: string;
 }
+
+/**
+ * Cache configuration
+ */
+export const CACHE_CONFIG: CacheConfig = {
+    enabled: process.env.CACHE_ENABLED !== 'false', // Enabled by default
+    defaultTTL: parseInt(process.env.CACHE_DEFAULT_TTL || '300', 10), // 5 minutes
+    maxSize: parseInt(process.env.CACHE_MAX_SIZE || '100', 10), // 100 entries
+    ttlByType: {
+        file: parseInt(process.env.CACHE_FILE_TTL || '600', 10),       // 10 minutes
+        components: parseInt(process.env.CACHE_COMPONENTS_TTL || '300', 10), // 5 minutes
+        tokens: parseInt(process.env.CACHE_TOKENS_TTL || '300', 10),   // 5 minutes
+        plan: parseInt(process.env.CACHE_PLAN_TTL || '180', 10),       // 3 minutes
+    },
+};
 
 /**
  * Parse and validate PORT environment variable

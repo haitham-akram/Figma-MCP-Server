@@ -5,7 +5,6 @@
  * Detects color palettes, typography scales, spacing systems, and other token patterns
  */
 
-import { FigmaNode, TextNode, FrameNode } from '../types/figma-api.js';
 import { NormalizedNode, TypographyIntent } from '../types/normalized.js';
 import { DesignToken, TokenCategory, TypographyValue } from '../types/figma.js';
 import { Color } from '../types/figma-base.js';
@@ -245,7 +244,7 @@ function generateNeutralColorName(brightness: number, index: number): string {
     if (brightness > 0.95) return `white${index > 0 ? `-${index}` : ''}`;
     if (brightness < 0.05) return `black${index > 0 ? `-${index}` : ''}`;
 
-    // Gray scale from 100 (darkest) to 900 (lightest)
+    // Gray scale from 100 (lightest) to 900 (darkest)
     const scale = 900 - Math.round(brightness * 800);
     return `gray-${scale}`;
 }

@@ -401,6 +401,7 @@ function mapCounterAxisAlign(node: any): FlexboxRules['alignItems'] {
         'MIN': 'flex-start',
         'CENTER': 'center',
         'MAX': 'flex-end',
+        'BASELINE': 'baseline',
     };
     return alignMap[align] || 'stretch';
 }

@@ -12,11 +12,12 @@ import {
     ImplementationStep,
     ComponentMapping,
 } from '../../types/figma.js';
-import { FigmaNode, ComponentNode, ComponentSetNode, InstanceNode } from '../../types/figma-api.js';
+import { FigmaNode, ComponentNode, ComponentSetNode, InstanceNode, FrameNode } from '../../types/figma-api.js';
 import { DesignToken } from '../../types/figma.js';
 import { NormalizedNode } from '../../types/normalized.js';
 import { normalizeNode } from '../../mappers/node-mapper.js';
 import { inferDesignTokens } from '../../mappers/token-mapper.js';
+import { handleGetFrameMap } from './get-frame-map-handler.js';
 
 /**
  * Handle getImplementationPlan tool execution
@@ -43,33 +44,58 @@ export async function handleGetImplementationPlan(
     // Infer design tokens
     const tokens = inferDesignTokens(normalizedNodes);
 
-    // Collect all component nodes
-    const allComponents = traverseForComponents(fileData.document);
+    // Try frames first, then components
+    let allFrames = traverseForFrames(fileData.document);
+    let allComponents = traverseForComponents(fileData.document);
 
-    // Apply filters
-    let filteredComponents = allComponents;
+    // Decide which to use: frames if available, otherwise components
+    const useFrames = allFrames.length > 0;
 
-    if (pageId) {
-        filteredComponents = filteredComponents.filter((comp) =>
-            isComponentInPage(comp, pageId, fileData.document)
-        );
-    }
+    console.error(`Implementation plan using: ${useFrames ? 'FRAMES' : 'COMPONENTS'} (frames: ${allFrames.length}, components: ${allComponents.length})`);
 
-    if (componentIds && componentIds.length > 0) {
-        filteredComponents = filteredComponents.filter((comp) =>
-            componentIds.includes(comp.id)
-        );
+    // Apply filters and processing
+    let filteredElements: Array<ComponentNode | ComponentSetNode | InstanceNode | FrameNode>;
+
+    if (useFrames) {
+        filteredElements = allFrames;
+
+        if (pageId) {
+            filteredElements = filteredElements.filter((elem) =>
+                isNodeInPage(elem, pageId, fileData.document)
+            );
+        }
+
+        if (componentIds && componentIds.length > 0) {
+            filteredElements = filteredElements.filter((elem) =>
+                componentIds.includes(elem.id)
+            );
+        }
+    } else {
+        filteredElements = allComponents;
+
+        if (pageId) {
+            filteredElements = filteredElements.filter((comp) =>
+                isComponentInPage(comp as ComponentNode | ComponentSetNode | InstanceNode, pageId, fileData.document)
+            );
+        }
+
+        if (componentIds && componentIds.length > 0) {
+            filteredElements = filteredElements.filter((comp) =>
+                componentIds.includes(comp.id)
+            );
+        }
     }
 
     // Generate framework-agnostic implementation steps
-    const steps = generateImplementationSteps(filteredComponents, tokens);
+    const steps = generateImplementationSteps(filteredElements, tokens, useFrames);
 
     // Generate component mappings with layout strategy
     const componentMappings = generateComponentMappings(
-        filteredComponents,
+        filteredElements,
         normalizedNodes,
         nodeMap,
-        tokens
+        tokens,
+        useFrames
     );
 
     // Analyze layout patterns across all components
@@ -86,11 +112,12 @@ export async function handleGetImplementationPlan(
 
     // Generate summary notes
     const notes = generateSummaryNotes(
-        filteredComponents.length,
+        filteredElements.length,
         tokens.length,
         layoutGuidance,
         stylingGuidance,
-        targetFramework
+        targetFramework,
+        useFrames
     );
 
     return {
@@ -141,6 +168,28 @@ function createNodeMap(nodes: NormalizedNode[]): Map<string, NormalizedNode> {
 }
 
 /**
+ * Traverse for frame nodes
+ */
+function traverseForFrames(root: FigmaNode): FrameNode[] {
+    const frames: FrameNode[] = [];
+    const queue: FigmaNode[] = [root];
+
+    while (queue.length > 0) {
+        const node = queue.shift()!;
+
+        if (node.type === 'FRAME') {
+            frames.push(node as FrameNode);
+        }
+
+        if ('children' in node && node.children) {
+            queue.push(...node.children);
+        }
+    }
+
+    return frames;
+}
+
+/**
  * Traverse for component nodes
  */
 function traverseForComponents(
@@ -169,10 +218,10 @@ function traverseForComponents(
 }
 
 /**
- * Check if component belongs to specific page
+ * Check if node belongs to specific page
  */
-function isComponentInPage(
-    component: ComponentNode | ComponentSetNode | InstanceNode,
+function isNodeInPage(
+    node: FigmaNode,
     pageId: string,
     root: FigmaNode
 ): boolean {
@@ -180,19 +229,30 @@ function isComponentInPage(
     const queue: FigmaNode[] = [root];
 
     while (queue.length > 0) {
-        const node = queue.shift()!;
+        const current = queue.shift()!;
 
-        if (node.id === component.id) {
-            // Found component, now check if ancestor is the target page
-            return isAncestorPage(node, pageId, root);
+        if (current.id === node.id) {
+            // Found node, now check if ancestor is the target page
+            return isAncestorPage(current, pageId, root);
         }
 
-        if ('children' in node && node.children) {
-            queue.push(...node.children);
+        if ('children' in current && current.children) {
+            queue.push(...current.children);
         }
     }
 
     return false;
+}
+
+/**
+ * Check if component belongs to specific page
+ */
+function isComponentInPage(
+    component: ComponentNode | ComponentSetNode | InstanceNode,
+    pageId: string,
+    root: FigmaNode
+): boolean {
+    return isNodeInPage(component, pageId, root);
 }
 
 /**
@@ -223,29 +283,40 @@ function isAncestorPage(component: FigmaNode, pageId: string, root: FigmaNode): 
  * Focus on structure and reasoning, not code
  */
 function generateImplementationSteps(
-    components: Array<ComponentNode | ComponentSetNode | InstanceNode>,
-    tokens: DesignToken[]
+    elements: Array<ComponentNode | ComponentSetNode | InstanceNode | FrameNode>,
+    tokens: DesignToken[],
+    useFrames: boolean = false
 ): ImplementationStep[] {
     const steps: ImplementationStep[] = [];
+    const elementType = useFrames ? 'frame' : 'component';
+    const elementTypePlural = useFrames ? 'frames' : 'components';
 
     // Step 1: Analyze design system
     steps.push({
         stepNumber: 1,
         title: 'Analyze design system foundations',
-        description: `Review the ${tokens.length} design tokens to understand the design language. Identify color palettes, typography scales, spacing systems, and other primitives. This forms the foundation for all components.`,
+        description: `Review the ${tokens.length} design tokens to understand the design language. Identify color palettes, typography scales, spacing systems, and other primitives. This forms the foundation for all ${elementTypePlural}.`,
         relatedTokens: tokens.slice(0, 15).map((t) => t.name),
     });
 
-    // Step 2: Establish component hierarchy
-    const componentCount = components.filter((c) => c.type === 'COMPONENT').length;
-    const componentSetCount = components.filter((c) => c.type === 'COMPONENT_SET').length;
-    const instanceCount = components.filter((c) => c.type === 'INSTANCE').length;
+    // Step 2: Establish element hierarchy
+    const componentCount = useFrames
+        ? elements.filter((c) => c.type === 'FRAME').length
+        : elements.filter((c) => c.type === 'COMPONENT').length;
+    const componentSetCount = useFrames
+        ? 0
+        : elements.filter((c) => c.type === 'COMPONENT_SET').length;
+    const instanceCount = useFrames
+        ? 0
+        : elements.filter((c) => c.type === 'INSTANCE').length;
 
     steps.push({
         stepNumber: 2,
-        title: 'Establish component hierarchy',
-        description: `Map out component relationships: ${componentCount} base components, ${componentSetCount} component sets (with variants), ${instanceCount} instances. Identify atomic components (buttons, inputs) vs. composite components (forms, cards).`,
-        relatedComponents: components.slice(0, 10).map((c) => c.id),
+        title: `Establish ${elementType} hierarchy`,
+        description: useFrames
+            ? `Map out frame relationships: ${componentCount} frames to implement. Identify top-level frames vs. nested frames.`
+            : `Map out component relationships: ${componentCount} base components, ${componentSetCount} component sets (with variants), ${instanceCount} instances. Identify atomic components (buttons, inputs) vs. composite components (forms, cards).`,
+        relatedComponents: elements.slice(0, 10).map((c) => c.id),
     });
 
     // Step 3: Define folder structure
@@ -267,7 +338,7 @@ function generateImplementationSteps(
         stepNumber: 5,
         title: 'Build base components first',
         description: 'Start with the most primitive components (buttons, text inputs, icons). These have no dependencies and are used by all other components. Focus on API design (props/attributes) and token integration.',
-        relatedComponents: components.filter((c) => c.type === 'COMPONENT').slice(0, 5).map((c) => c.id),
+        relatedComponents: elements.filter((c) => c.type === 'COMPONENT' || c.type === 'FRAME').slice(0, 5).map((c) => c.id),
     });
 
     // Step 6: Handle variants
@@ -276,7 +347,7 @@ function generateImplementationSteps(
             stepNumber: 6,
             title: 'Implement variant systems',
             description: `${componentSetCount} component sets detected with multiple variants. Design a variant system that supports size, state, theme, and custom variations. Ensure variant props are type-safe and well-documented.`,
-            relatedComponents: components.filter((c) => c.type === 'COMPONENT_SET').slice(0, 5).map((c) => c.id),
+            relatedComponents: useFrames ? [] : elements.filter((c) => c.type === 'COMPONENT_SET').slice(0, 5).map((c) => c.id),
         });
     }
 
@@ -301,34 +372,35 @@ function generateImplementationSteps(
  * Generate component-to-code mappings with layout strategy
  */
 function generateComponentMappings(
-    components: Array<ComponentNode | ComponentSetNode | InstanceNode>,
+    elements: Array<ComponentNode | ComponentSetNode | InstanceNode | FrameNode>,
     normalizedNodes: NormalizedNode[],
     nodeMap: Map<string, NormalizedNode>,
-    tokens: DesignToken[]
+    tokens: DesignToken[],
+    useFrames: boolean = false
 ): ComponentMapping[] {
-    return components.map((component) => {
-        const suggestedCodeName = toPascalCase(component.name);
-        const suggestedFilePath = generateGenericFilePath(component.name);
+    return elements.map((element) => {
+        const suggestedCodeName = toPascalCase(element.name);
+        const suggestedFilePath = generateGenericFilePath(element.name);
 
         // Extract layout strategy from normalized node
-        const normalizedNode = nodeMap.get(component.id);
+        const normalizedNode = nodeMap.get(element.id);
         const layoutStrategy = extractLayoutStrategy(normalizedNode);
 
         // Analyze styling approach
-        const stylingApproach = analyzeStylingApproach(component, tokens, normalizedNode);
+        const stylingApproach = analyzeStylingApproach(element, tokens, normalizedNode);
 
         // Calculate complexity score
-        const complexityScore = calculateComplexityScore(component, normalizedNode);
+        const complexityScore = calculateComplexityScore(element, normalizedNode);
 
         // Infer props (generic, not framework-specific)
-        const props = inferGenericProps(component);
+        const props = inferGenericProps(element);
 
         // Find related tokens
-        const relatedTokens = findRelatedTokens(component, tokens);
+        const relatedTokens = findRelatedTokens(element, tokens);
 
         return {
-            componentId: component.id,
-            componentName: component.name,
+            componentId: element.id,
+            componentName: element.name,
             suggestedCodeName,
             suggestedFilePath,
             layoutStrategy,
@@ -336,8 +408,8 @@ function generateComponentMappings(
             complexityScore,
             props,
             relatedTokens,
-            notes: `Component type: ${component.type}. ${'description' in component && component.description
-                ? `Description: ${component.description}`
+            notes: `Element type: ${element.type}. ${'description' in element && element.description
+                ? `Description: ${element.description}`
                 : ''
                 }`,
         };
@@ -620,30 +692,32 @@ function identifyRisks(
  * Generate summary notes
  */
 function generateSummaryNotes(
-    componentCount: number,
+    elementCount: number,
     tokenCount: number,
     layoutGuidance: ImplementationPlanResponse['layoutGuidance'],
     stylingGuidance: ImplementationPlanResponse['stylingGuidance'],
-    targetFramework?: string
+    targetFramework?: string,
+    useFrames: boolean = false
 ): string {
+    const elementType = useFrames ? 'frames' : 'components';
     const frameworkNote = targetFramework
         ? ` Target framework: ${targetFramework} (adapt patterns as needed).`
         : ' Framework-agnostic plan - adapt to your chosen framework.';
 
-    return `Implementation plan generated for ${componentCount} components with ${tokenCount} design tokens.${frameworkNote}
+    return `Implementation plan generated for ${elementCount} ${elementType} with ${tokenCount} design tokens.${frameworkNote}
 
 Primary layout strategy: ${layoutGuidance.primaryStrategy}
 Token coverage: ${stylingGuidance.tokenCoverage.colors} colors, ${stylingGuidance.tokenCoverage.typography} typography, ${stylingGuidance.tokenCoverage.spacing} spacing
 
 Focus areas:
-1. Component breakdown by complexity and dependencies
+1. ${useFrames ? 'Frame' : 'Component'} breakdown by complexity and dependencies
 2. Suggested folder structure (primitives, patterns, compositions)
-3. Layout strategy per component (flexbox, grid, absolute, none)
+3. Layout strategy per ${useFrames ? 'frame' : 'component'} (flexbox, grid, absolute, none)
 4. Styling strategy with token usage recommendations
 5. Open questions requiring developer decisions
 6. Implementation risks with mitigation strategies
 
-Next steps: Review open questions, address high-severity risks, and begin with base components.`;
+Next steps: Review open questions, address high-severity risks, and begin with base ${elementType}.`;
 }
 
 // Helper functions
@@ -708,7 +782,7 @@ function extractLayoutStrategy(
  * Analyze styling approach for component
  */
 function analyzeStylingApproach(
-    component: ComponentNode | ComponentSetNode | InstanceNode,
+    element: ComponentNode | ComponentSetNode | InstanceNode | FrameNode,
     tokens: DesignToken[],
     node?: NormalizedNode
 ): ComponentMapping['stylingApproach'] {
@@ -718,10 +792,10 @@ function analyzeStylingApproach(
 
     // Check for token usage
     const relatedColorTokens = tokens.filter(
-        (t) => t.category === 'color' && component.name.toLowerCase().includes(t.name.toLowerCase())
+        (t) => t.category === 'color' && element.name.toLowerCase().includes(t.name.toLowerCase())
     );
     const relatedSpacingTokens = tokens.filter(
-        (t) => t.category === 'spacing' && component.name.toLowerCase().includes(t.name.toLowerCase())
+        (t) => t.category === 'spacing' && element.name.toLowerCase().includes(t.name.toLowerCase())
     );
 
     if (relatedColorTokens.length > 0) {
@@ -735,7 +809,7 @@ function analyzeStylingApproach(
     }
 
     // Check for variants
-    if (component.type === 'COMPONENT_SET') {
+    if (element.type === 'COMPONENT_SET') {
         recommendations.push('Implement variant system for different states/sizes/themes');
         complexityNotes = 'Component set with multiple variants - requires state management';
     }
@@ -768,19 +842,20 @@ function analyzeStylingApproach(
  * Calculate component complexity score (0-10)
  */
 function calculateComplexityScore(
-    component: ComponentNode | ComponentSetNode | InstanceNode,
+    element: ComponentNode | ComponentSetNode | InstanceNode | FrameNode,
     node?: NormalizedNode
 ): number {
     let score = 0;
 
-    // Base complexity: component type
-    if (component.type === 'COMPONENT') score += 2;
-    if (component.type === 'COMPONENT_SET') score += 4;
-    if (component.type === 'INSTANCE') score += 1;
+    // Base complexity: element type
+    if (element.type === 'COMPONENT') score += 2;
+    if (element.type === 'COMPONENT_SET') score += 4;
+    if (element.type === 'INSTANCE') score += 1;
+    if (element.type === 'FRAME') score += 1;
 
     // Children complexity
-    if ('children' in component && component.children) {
-        const childCount = component.children.length;
+    if ('children' in element && element.children) {
+        const childCount = element.children.length;
         if (childCount > 10) score += 3;
         else if (childCount > 5) score += 2;
         else if (childCount > 2) score += 1;
@@ -801,12 +876,12 @@ function calculateComplexityScore(
  * Infer generic props (not framework-specific)
  */
 function inferGenericProps(
-    component: ComponentNode | ComponentSetNode | InstanceNode
+    element: ComponentNode | ComponentSetNode | InstanceNode | FrameNode
 ): Array<{ name: string; type: string; description?: string; required: boolean }> {
     const props: Array<{ name: string; type: string; description?: string; required: boolean }> = [];
 
     // Children prop (generic)
-    if ('children' in component && component.children && component.children.length > 0) {
+    if ('children' in element && element.children && element.children.length > 0) {
         props.push({
             name: 'children',
             type: 'node',
@@ -816,7 +891,7 @@ function inferGenericProps(
     }
 
     // Variant prop for component sets
-    if (component.type === 'COMPONENT_SET') {
+    if ('type' in element && element.type === 'COMPONENT_SET') {
         props.push({
             name: 'variant',
             type: 'string',
@@ -876,17 +951,17 @@ function generateGenericFilePath(componentName: string): string {
  * Find design tokens related to component
  */
 function findRelatedTokens(
-    component: ComponentNode | ComponentSetNode | InstanceNode,
+    element: ComponentNode | ComponentSetNode | InstanceNode | FrameNode,
     tokens: DesignToken[]
 ): string[] {
-    // Simple heuristic: match token names with component name
-    const componentNameLower = component.name.toLowerCase();
+    // Simple heuristic: match token names with element name
+    const elementNameLower = element.name.toLowerCase();
     const relatedTokens = tokens
         .filter((token) => {
             const tokenNameLower = token.name.toLowerCase();
-            // Match if token name contains component name segments
-            const componentSegments = componentNameLower.split(/[\s\-_/]+/);
-            return componentSegments.some((segment) => tokenNameLower.includes(segment));
+            // Match if token name contains element name segments
+            const elementSegments = elementNameLower.split(/[\s\-_/]+/);
+            return elementSegments.some((segment) => tokenNameLower.includes(segment));
         })
         .map((token) => token.name);
 

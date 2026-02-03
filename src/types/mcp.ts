@@ -64,7 +64,7 @@ export interface Manifest {
 // Tool Call Request
 export interface ToolCallRequest {
     name: string;
-    params?: Record<string, unknown>;
+    arguments?: Record<string, unknown>;
 }
 
 // Tool Call Result

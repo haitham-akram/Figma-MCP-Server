@@ -39,7 +39,7 @@ export type GetImplementationPlanError = FigmaError;
 export const getImplementationPlanTool: Tool = {
     name: 'getImplementationPlan',
     description:
-        'Generate a comprehensive implementation plan for converting Figma designs to code. Returns both step-by-step implementation instructions and component-to-code mappings with suggested file paths, props, and related design tokens. Useful for planning development work and understanding how to structure code based on Figma designs.',
+        'Generate a comprehensive implementation plan for converting Figma designs to code. IMPORTANT: Follow formatting rules in getDocumentation tool output for your response.',
     inputSchema: {
         type: 'object',
         properties: {
@@ -72,6 +72,6 @@ export const getImplementationPlanTool: Tool = {
             },
         },
         required: ['fileKey'],
-        additionalProperties: false,
+        additionalProperties: true,
     },
 };

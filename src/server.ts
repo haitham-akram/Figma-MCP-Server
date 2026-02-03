@@ -33,13 +33,13 @@ export function createServer(logLevel: string): FastifyInstance {
     const fastify = Fastify({
         logger: {
             level: logLevel,
+            stream: process.stderr, // Redirect Fastify logs to stderr
         },
     });
 
-    // Load package.json for server metadata
-    const packageJson = JSON.parse(
-        readFileSync(join(process.cwd(), 'package.json'), 'utf-8')
-    );
+    // Load package.json for server metadata (using absolute path for VS Code environment)
+    const packageJsonPath = join(__dirname, '..', 'package.json');
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
 
     // Initialize Figma client (must happen before schema initialization)
     try {
@@ -69,71 +69,116 @@ export function createServer(logLevel: string): FastifyInstance {
      * Main JSON-RPC endpoint
      */
     fastify.post('/rpc', async (request: FastifyRequest, reply: FastifyReply) => {
-        const requestId = (request.body as any)?.id ?? null;
-
-        try {
-            // Validate JSON-RPC request structure
-            const validation = validateJsonRpcRequest(request.body);
-            if (!validation.valid) {
-                return createErrorResponse(
-                    requestId,
-                    ErrorCodes.INVALID_REQUEST,
-                    'Invalid JSON-RPC request',
-                    { errors: validation.errors }
-                );
-            }
-
-            const rpcRequest = request.body as JSONRPCRequest;
-            const { method, params, id } = rpcRequest;
-
-            // Route to appropriate handler based on method
-            switch (method) {
-                case 'manifest':
-                    return handleManifest(id, packageJson);
-
-                case 'tools/list':
-                    return handleToolsList(id);
-
-                case 'tools/call':
-                    return await handleToolsCall(id, params, fastify);
-
-                default:
-                    return createErrorResponse(
-                        id,
-                        ErrorCodes.METHOD_NOT_FOUND,
-                        `Method "${method}" not found`,
-                        {
-                            availableMethods: ['manifest', 'tools/list', 'tools/call'],
-                        }
-                    );
-            }
-        } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            fastify.log.error(`Error processing JSON-RPC request: ${errorMessage}`);
-
-            // Check if it's a known JSON-RPC error
-            if (error && typeof error === 'object' && 'code' in error) {
-                return createErrorResponse(
-                    requestId,
-                    (error as any).code,
-                    (error as any).message,
-                    (error as any).data
-                );
-            }
-
-            // Otherwise, return internal error
-            return createErrorResponse(
-                requestId,
-                ErrorCodes.INTERNAL_ERROR,
-                'Internal server error',
-                {
-                    message: errorMessage,
-                }
-            );
+        const response = await handleRequest(request.body, packageJson, fastify);
+        if (response === null) {
+            reply.status(204).send();
+            return;
         }
+        return response;
     });
 
     return fastify;
+}
+
+/**
+ * Shared JSON-RPC request handler
+ */
+export async function handleRequest(
+    body: any,
+    packageJson: any,
+    fastify: FastifyInstance
+): Promise<any> {
+    const requestId = body?.id ?? null;
+
+    try {
+        // Validate JSON-RPC request structure
+        const validation = validateJsonRpcRequest(body);
+        if (!validation.valid) {
+            return createErrorResponse(
+                requestId,
+                ErrorCodes.INVALID_REQUEST,
+                'Invalid JSON-RPC request',
+                { errors: validation.errors }
+            );
+        }
+
+        const rpcRequest = body as JSONRPCRequest;
+        const { method, params, id } = rpcRequest;
+
+        // Route to appropriate handler based on method
+        switch (method) {
+            case 'initialize':
+                return createSuccessResponse(id, {
+                    protocolVersion: '2024-11-05',
+                    capabilities: {
+                        tools: {},
+                        resources: {},
+                    },
+                    serverInfo: {
+                        name: packageJson.name,
+                        version: packageJson.version,
+                    },
+                });
+
+            case 'notifications/initialized':
+                return null; // MCP notifications don't get responses
+
+            case 'manifest':
+                return handleManifest(id, packageJson);
+
+            case 'tools/list':
+                return handleToolsList(id);
+
+            case 'tools/call':
+                return await handleToolsCall(id, params, fastify);
+
+            case 'resources/list':
+                return handleResourcesList(id);
+
+            case 'resources/read':
+                return handleResourcesRead(id, params);
+
+            default:
+                return createErrorResponse(
+                    id,
+                    ErrorCodes.METHOD_NOT_FOUND,
+                    `Method "${method}" not found`,
+                    {
+                        availableMethods: [
+                            'initialize',
+                            'manifest',
+                            'tools/list',
+                            'tools/call',
+                            'resources/list',
+                            'resources/read',
+                        ],
+                    }
+                );
+        }
+    } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        fastify.log.error(`Error processing JSON-RPC request: ${errorMessage}`);
+
+        // Check if it's a known JSON-RPC error
+        if (error && typeof error === 'object' && 'code' in error) {
+            return createErrorResponse(
+                requestId,
+                (error as any).code,
+                (error as any).message,
+                (error as any).data
+            );
+        }
+
+        // Otherwise, return internal error
+        return createErrorResponse(
+            requestId,
+            ErrorCodes.INTERNAL_ERROR,
+            'Internal server error',
+            {
+                message: errorMessage,
+            }
+        );
+    }
 }
 
 /**
@@ -149,6 +194,7 @@ function handleManifest(
         description: packageJson.description,
         capabilities: {
             tools: {},
+            resources: {},
         },
     };
 
@@ -206,10 +252,14 @@ async function handleToolsCall(
     }
 
     // Validate tool params against schema using pre-compiled AJV validator
-    const toolParams = toolCall.params || {};
+    const toolParams = toolCall.arguments || {};
     const validate = getValidator(tool.name);
 
     if (validate && !validate(toolParams)) {
+        fastify.log.error(
+            { tool: tool.name, errors: validate.errors, arguments: toolParams },
+            'Tool parameter validation failed'
+        );
         return createErrorResponse(
             id,
             ErrorCodes.INVALID_PARAMS,
@@ -238,4 +288,40 @@ async function handleToolsCall(
 
         throw error; // Re-throw to be caught by outer handler
     }
+}
+
+/**
+ * Handle 'resources/list' method
+ */
+function handleResourcesList(id: string | number | null): any {
+    return createSuccessResponse(id, {
+        resources: [
+            {
+                uri: 'figma://instructions',
+                name: 'Figma MCP Usage Instructions',
+                description: 'Usage guidelines and rules for the Figma MCP server',
+                mimeType: 'text/markdown',
+            },
+        ],
+    });
+}
+
+/**
+ * Handle 'resources/read' method
+ */
+function handleResourcesRead(id: string | number | null, params: any): any {
+    const { uri } = params;
+    if (uri === 'figma://instructions') {
+        const content = readFileSync(join(__dirname, '..', 'COPILOT_INSTRUCTIONS.md'), 'utf-8');
+        return createSuccessResponse(id, {
+            contents: [
+                {
+                    uri,
+                    mimeType: 'text/markdown',
+                    text: content,
+                },
+            ],
+        });
+    }
+    return createErrorResponse(id, ErrorCodes.INVALID_PARAMS, `Resource ${uri} not found`);
 }

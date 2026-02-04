@@ -476,11 +476,14 @@ function extractVectors(node: FigmaNode): ComponentStylesResponse['vectors'] {
 
     function traverse(n: FigmaNode) {
         if (vectorTypes.includes(n.type)) {
+            const hasExportSettings = !!(n as any).exportSettings;
+            const hasIconName = /\bicon\b/i.test(n.name);
+
             vectors.push({
                 nodeId: n.id,
                 nodeName: n.name,
                 vectorType: n.type,
-                canExport: !!(n as any).exportSettings || n.name.toLowerCase().includes('icon'),
+                canExport: hasExportSettings || hasIconName,
             });
         }
 

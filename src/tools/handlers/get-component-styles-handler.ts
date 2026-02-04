@@ -638,11 +638,26 @@ function figmaColorToHex(color: FigmaColor): string {
  */
 function formatLineHeight(style: TypeStyle): string {
     if (style.lineHeightUnit === 'PIXELS') {
-        return `${style.lineHeightPx}px`;
+        if (typeof style.lineHeightPx === 'number') {
+            return `${style.lineHeightPx}px`;
+        }
     } else if (style.lineHeightUnit === 'PERCENT') {
+        if (typeof style.lineHeightPercent === 'number') {
+            return `${style.lineHeightPercent}%`;
+        }
+    } else if (style.lineHeightUnit === 'AUTO') {
+        // Figma's AUTO line height: let the consumer know it's automatic
+        return 'AUTO';
+    }
+
+    // Fallback: try to use any available numeric value, otherwise return empty string
+    if (typeof style.lineHeightPx === 'number') {
+        return `${style.lineHeightPx}px`;
+    }
+    if (typeof style.lineHeightPercent === 'number') {
         return `${style.lineHeightPercent}%`;
     }
-    return `${style.lineHeightPx}px`;
+    return '';
 }
 
 /**

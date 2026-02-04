@@ -128,7 +128,7 @@ export class CacheManager {
         if (filters && Object.keys(filters).length > 0) {
             const filterStr = Object.entries(filters)
                 .sort(([a], [b]) => a.localeCompare(b))
-                .map(([k, v]) => `${k}=${v}`)
+                .map(([k, v]) => `${k}=${JSON.stringify(v)}`)
                 .join(',');
             return `${base}:${filterStr}`;
         }
@@ -143,7 +143,7 @@ export class CacheManager {
         if (filters && Object.keys(filters).length > 0) {
             const filterStr = Object.entries(filters)
                 .sort(([a], [b]) => a.localeCompare(b))
-                .map(([k, v]) => `${k}=${v}`)
+                .map(([k, v]) => `${k}=${JSON.stringify(v)}`)
                 .join(',');
             return `${base}:${filterStr}`;
         }

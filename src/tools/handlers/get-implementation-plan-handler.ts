@@ -1154,8 +1154,22 @@ function extractVisualStyles(
  * Convert Figma color to hex string
  */
 function figmaColorToHex(color: any): string {
-    const r = Math.round(color.r * 255);
-    const g = Math.round(color.g * 255);
-    const b = Math.round(color.b * 255);
-    return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+    const r = Math.round((color.r ?? 0) * 255);
+    const g = Math.round((color.g ?? 0) * 255);
+    const b = Math.round((color.b ?? 0) * 255);
+    const a = typeof color.a === 'number' ? Math.round(color.a * 255) : 255;
+
+    const baseHex =
+        `#${r.toString(16).padStart(2, '0')}` +
+        `${g.toString(16).padStart(2, '0')}` +
+        `${b.toString(16).padStart(2, '0')}`;
+
+    // Preserve existing behavior for fully opaque colors (no alpha component)
+    if (a === 255) {
+        return baseHex;
+    }
+
+    // Include alpha for semi-transparent colors as #RRGGBBAA
+    const alphaHex = a.toString(16).padStart(2, '0');
+    return `${baseHex}${alphaHex}`;
 }

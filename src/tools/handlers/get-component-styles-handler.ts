@@ -321,13 +321,19 @@ function extractElementStyles(node: FigmaNode, includeChildren: boolean): Elemen
                     if (styleId !== currentStyleId && currentStyleId !== null && currentStyleId !== 0) {
                         const override = table[currentStyleId];
                         if (override) {
+                            // Prefer color defined in the override's fills, fall back to base fills
+                            const overrideFillColor =
+                                (override as any).fills && (override as any).fills[0]?.color
+                                    ? figmaColorToHex((override as any).fills[0].color as FigmaColor)
+                                    : (fills && fills[0]?.color ? figmaColorToHex(fills[0].color) : undefined);
+
                             mixedStyles.push({
                                 startIndex,
                                 endIndex: i,
                                 fontFamily: override.fontFamily,
                                 fontWeight: override.fontWeight,
                                 fontSize: override.fontSize,
-                                color: fills && fills[0]?.color ? figmaColorToHex(fills[0].color) : undefined,
+                                color: overrideFillColor,
                             });
                         }
                         startIndex = i;

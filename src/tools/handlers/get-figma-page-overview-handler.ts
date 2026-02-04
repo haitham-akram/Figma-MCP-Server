@@ -52,6 +52,7 @@ export async function handleGetFigmaPageOverview(
     ) || [];
 
     // Map all pages to PageSummary format for caching (without filtering)
+    // This enables cache reuse across different pageId filter values
     const allSummaries: PageSummary[] = allPages.map((page) => {
         const nodeCount = page.children?.length || 0;
         const dimensions = { width: 0, height: 0 };

@@ -31,7 +31,9 @@ export interface CacheConfig {
     maxSize: number;
     ttlByType: {
         file: number;
+        overview: number;
         components: number;
+        frames: number;
         tokens: number;
         plan: number;
     };

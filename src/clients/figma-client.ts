@@ -72,6 +72,7 @@ export class FigmaClient {
     private readonly accessToken: string;
     private readonly httpClient: HttpClient;
     private readonly cacheManager: CacheManager | null;
+    private readonly inFlightRequests = new Map<string, Promise<any>>();
 
     constructor(config: FigmaClientConfig, httpClient?: HttpClient, cacheManager?: CacheManager | null) {
         this.baseUrl = config.baseUrl || 'https://api.figma.com/v1';
@@ -81,41 +82,56 @@ export class FigmaClient {
     }
 
     /**
-     * Make authenticated request to Figma API
+     * Make authenticated request to Figma API with request coalescing
      */
     private async request<T>(endpoint: string): Promise<T> {
-        const url = `${this.baseUrl}${endpoint}`;
+        // Return existing promise if request is already in-flight
+        const inFlight = this.inFlightRequests.get(endpoint);
+        if (inFlight) {
+            console.error(`[FigmaClient] Coalescing request for: ${endpoint}`);
+            return inFlight;
+        }
 
-        try {
-            const response = await this.httpClient.fetch(url, {
-                method: 'GET',
-                headers: {
-                    'X-Figma-Token': this.accessToken,
-                },
-            });
+        const promise = (async () => {
+            const url = `${this.baseUrl}${endpoint}`;
 
-            if (!response.ok) {
-                let errorResponse: FigmaApiErrorResponse | undefined;
-                try {
-                    errorResponse = await response.json() as FigmaApiErrorResponse;
-                } catch {
-                    // Ignore JSON parse errors
+            try {
+                const response = await this.httpClient.fetch(url, {
+                    method: 'GET',
+                    headers: {
+                        'X-Figma-Token': this.accessToken,
+                    },
+                });
+
+                if (!response.ok) {
+                    let errorResponse: FigmaApiErrorResponse | undefined;
+                    try {
+                        errorResponse = await response.json() as FigmaApiErrorResponse;
+                    } catch {
+                        // Ignore JSON parse errors
+                    }
+
+                    throw new FigmaApiError(response.status, response.statusText, errorResponse);
                 }
 
-                throw new FigmaApiError(response.status, response.statusText, errorResponse);
-            }
+                return await response.json() as T;
+            } catch (error) {
+                if (error instanceof FigmaApiError) {
+                    throw error;
+                }
 
-            return await response.json() as T;
-        } catch (error) {
-            if (error instanceof FigmaApiError) {
-                throw error;
+                // Network or other errors
+                throw new Error(
+                    `Failed to fetch from Figma API: ${error instanceof Error ? error.message : String(error)}`
+                );
+            } finally {
+                // Remove from in-flight requests once finished
+                this.inFlightRequests.delete(endpoint);
             }
+        })();
 
-            // Network or other errors
-            throw new Error(
-                `Failed to fetch from Figma API: ${error instanceof Error ? error.message : String(error)}`
-            );
-        }
+        this.inFlightRequests.set(endpoint, promise);
+        return promise;
     }
 
     /**

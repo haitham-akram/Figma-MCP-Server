@@ -10,6 +10,8 @@ import { FigmaNode } from '../../types/figma-api.js';
 import { NormalizedNode } from '../../types/normalized.js';
 import { normalizeNode } from '../../mappers/node-mapper.js';
 import { inferDesignTokens } from '../../mappers/token-mapper.js';
+import { getCacheManager } from '../registry.js';
+import { CacheManager } from '../../cache/cache-manager.js';
 
 /**
  * Maximum traversal depth for node normalization
@@ -29,18 +31,38 @@ export async function handleGetDesignTokens(
 ): Promise<DesignTokensResponse> {
     const { fileKey, version, tokenType, tokenName, limit = 100, offset = 0 } = input;
 
-    // Fetch file data from Figma API
-    const fileData = await figmaClient.getFile(fileKey, { version });
+    const cacheManager = getCacheManager();
+    const cacheKey = CacheManager.tokensKey(fileKey, version);
 
-    // Traverse and normalize all nodes using BFS
-    const normalizedNodes = traverseAndNormalize(fileData.document);
+    // Try to get processed tokens from cache
+    let allTokens: DesignToken[] | null = null;
+    if (cacheManager) {
+        allTokens = await cacheManager.get<DesignToken[]>(cacheKey);
+        if (allTokens) {
+            console.error(`[Cache] Found processed tokens for ${fileKey}`);
+        }
+    }
 
-    console.error(`Normalized ${normalizedNodes.length} nodes for token inference`);
+    // If not in cache, fetch and process
+    if (!allTokens) {
+        // Fetch file data from Figma API
+        const fileData = await figmaClient.getFile(fileKey, { version });
 
-    // Infer design tokens from normalized nodes
-    const allTokens = inferDesignTokens(normalizedNodes);
+        // Traverse and normalize all nodes using BFS
+        const normalizedNodes = traverseAndNormalize(fileData.document);
 
-    console.error(`Inferred ${allTokens.length} design tokens`);
+        console.error(`Normalized ${normalizedNodes.length} nodes for token inference`);
+
+        // Infer design tokens from normalized nodes
+        allTokens = inferDesignTokens(normalizedNodes);
+
+        console.error(`Inferred ${allTokens.length} design tokens`);
+
+        // Cache the processed tokens
+        if (cacheManager) {
+            await cacheManager.set(cacheKey, allTokens, 'tokens');
+        }
+    }
 
     // Apply filters
     let filteredTokens = allTokens;

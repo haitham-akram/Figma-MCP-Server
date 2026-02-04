@@ -14,6 +14,7 @@ import { handleGetFrameMap } from './handlers/get-frame-map-handler.js';
 import { handleGetDesignTokens } from './handlers/get-design-tokens-handler.js';
 import { handleGetImplementationPlan } from './handlers/get-implementation-plan-handler.js';
 import { getDocumentationHandler } from './handlers/get-docs-handler.js';
+import { handleGetComponentStyles } from './handlers/get-component-styles-handler.js';
 import { config, CACHE_CONFIG } from '../config.js';
 import { CacheManager } from '../cache/cache-manager.js';
 
@@ -162,6 +163,10 @@ export async function executeTool(
 
             case 'getImplementationPlan':
                 result = await handleGetImplementationPlan(params as any, figmaClient);
+                break;
+
+            case 'getComponentStyles':
+                result = await handleGetComponentStyles(params as any, figmaClient);
                 break;
 
             default:

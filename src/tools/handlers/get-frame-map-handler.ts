@@ -7,6 +7,8 @@ import { FigmaClient } from '../../clients/figma-client.js';
 import { GetFrameMapInput } from '../figma/get-frame-map.js';
 import { FigmaNode, FrameNode } from '../../types/figma-api.js';
 import { buildComponentHierarchy } from '../../mappers/node-mapper.js';
+import { getCacheManager } from '../registry.js';
+import { CacheManager } from '../../cache/cache-manager.js';
 
 /**
  * Maximum traversal depth (log warning beyond this)
@@ -48,41 +50,61 @@ export async function handleGetFrameMap(
 ): Promise<FrameMapResponse> {
     const { fileKey, version, frameName, limit = 100, offset = 0 } = input;
 
-    // Fetch file data from Figma API
-    const fileData = await figmaClient.getFile(fileKey, { version });
+    const cacheManager = getCacheManager();
+    const cacheKey = CacheManager.framesKey(fileKey, version);
 
-    // Collect all frame nodes using BFS traversal
-    const allFrames = traverseForFrames(fileData.document);
+    // Try to get processed frames from cache
+    let frameInfos: FrameInfo[] | null = null;
+    if (cacheManager) {
+        frameInfos = await cacheManager.get<FrameInfo[]>(cacheKey);
+        if (frameInfos) {
+            console.error(`[Cache] Found processed frames for ${fileKey}`);
+        }
+    }
 
-    // Build hierarchy (parentId relationships)
-    const hierarchy = buildComponentHierarchy([fileData.document]);
+    // If not in cache, fetch and process
+    if (!frameInfos) {
+        // Fetch file data from Figma API
+        const fileData = await figmaClient.getFile(fileKey, { version });
 
-    // Map to FrameInfo format
-    const frameInfos: FrameInfo[] = allFrames.map((node) => {
-        const parentId = hierarchy.get(node.id);
-        const dimensions = node.absoluteBoundingBox
-            ? { width: node.absoluteBoundingBox.width, height: node.absoluteBoundingBox.height }
-            : { width: 0, height: 0 };
+        // Collect all frame nodes using BFS traversal
+        const allFrames = traverseForFrames(fileData.document);
 
-        // Extract children IDs (only frames)
-        const childrenIds = 'children' in node && node.children
-            ? node.children
-                .filter((child): child is FrameNode => child.type === 'FRAME')
-                .map((child) => child.id)
-            : [];
+        // Build hierarchy (parentId relationships)
+        const hierarchy = buildComponentHierarchy([fileData.document]);
 
-        return {
-            id: node.id,
-            name: node.name,
-            type: 'FRAME',
-            parentId,
-            childrenIds,
-            dimensions,
-            layoutMode: node.layoutMode,
-        };
-    });
+        // Map to FrameInfo format
+        frameInfos = allFrames.map((node) => {
+            const parentId = hierarchy.get(node.id);
+            const dimensions = node.absoluteBoundingBox
+                ? { width: node.absoluteBoundingBox.width, height: node.absoluteBoundingBox.height }
+                : { width: 0, height: 0 };
 
-    // Apply filters
+            // Extract children IDs (only frames)
+            const childrenIds = 'children' in node && node.children
+                ? node.children
+                    .filter((child): child is FrameNode => child.type === 'FRAME')
+                    .map((child) => child.id)
+                : [];
+
+            return {
+                id: node.id,
+                name: node.name,
+                type: 'FRAME',
+                parentId,
+                childrenIds,
+                dimensions,
+                layoutMode: node.layoutMode,
+            };
+        });
+
+        // Cache the processed frames
+        if (cacheManager) {
+            await cacheManager.set(cacheKey, frameInfos, 'frames');
+        }
+    }
+
+    // Apply filters to the processed (cached or fresh) frames
     let filteredFrames = frameInfos;
 
     if (frameName) {

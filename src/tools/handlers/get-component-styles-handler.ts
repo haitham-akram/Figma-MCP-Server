@@ -435,11 +435,15 @@ function extractImages(node: FigmaNode): ComponentStylesResponse['images'] {
             const fills = n.fills as Paint[];
             for (const fill of fills) {
                 if (fill.type === 'IMAGE') {
+                    // Note: imageUrl is a descriptive placeholder. To obtain an actual
+                    // image URL, use the Figma Images API with this imageRef and the file key.
                     images.push({
                         nodeId: n.id,
                         nodeName: n.name,
                         imageRef: fill.imageRef,
-                        imageUrl: fill.imageRef ? `https://figma.com/file/IMAGE/${fill.imageRef}` : '(IMAGE_WITHOUT_REF)',
+                        imageUrl: fill.imageRef
+                            ? `Requires Figma Images API: imageRef=${fill.imageRef}`
+                            : '(IMAGE_WITHOUT_REF)',
                     });
                 }
             }

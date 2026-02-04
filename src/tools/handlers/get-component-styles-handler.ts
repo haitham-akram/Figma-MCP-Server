@@ -604,7 +604,7 @@ function extractFonts(node: FigmaNode): ComponentStylesResponse['fonts'] {
 
     return Array.from(fontMap.entries())
         .map(([key, data]) => {
-            const [family, weight, size] = key.split(':');
+            const [family] = key.split(':');
             return {
                 family,
                 weight: data.weight,

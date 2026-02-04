@@ -71,7 +71,9 @@ export const CACHE_CONFIG: CacheConfig = {
     maxSize: validatePositiveInt(process.env.CACHE_MAX_SIZE, 100, 'CACHE_MAX_SIZE'), // 100 entries
     ttlByType: {
         file: validateNonNegativeInt(process.env.CACHE_FILE_TTL, 600, 'CACHE_FILE_TTL'),       // 10 minutes
+        overview: validateNonNegativeInt(process.env.CACHE_OVERVIEW_TTL, 600, 'CACHE_OVERVIEW_TTL'), // 10 minutes
         components: validateNonNegativeInt(process.env.CACHE_COMPONENTS_TTL, 300, 'CACHE_COMPONENTS_TTL'), // 5 minutes
+        frames: validateNonNegativeInt(process.env.CACHE_FRAMES_TTL, 300, 'CACHE_FRAMES_TTL'),   // 5 minutes
         tokens: validateNonNegativeInt(process.env.CACHE_TOKENS_TTL, 300, 'CACHE_TOKENS_TTL'),   // 5 minutes
         plan: validateNonNegativeInt(process.env.CACHE_PLAN_TTL, 180, 'CACHE_PLAN_TTL'),       // 3 minutes
     },

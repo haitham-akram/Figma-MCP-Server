@@ -10,6 +10,7 @@ import { getFrameMapTool } from './figma/get-frame-map.js';
 import { getDesignTokensTool } from './figma/get-design-tokens.js';
 import { getImplementationPlanTool } from './figma/get-implementation-plan.js';
 import { getDocumentationTool } from './figma/get-docs.js';
+import { GET_COMPONENT_STYLES_TOOL } from './figma/get-component-styles.js';
 
 /**
  * All available tool definitions
@@ -22,4 +23,5 @@ export const TOOL_DEFINITIONS: Tool[] = [
     getComponentMapTool,
     getDesignTokensTool,
     getImplementationPlanTool,
+    GET_COMPONENT_STYLES_TOOL,
 ];

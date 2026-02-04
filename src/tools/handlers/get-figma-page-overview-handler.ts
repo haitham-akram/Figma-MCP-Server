@@ -7,6 +7,8 @@ import { FigmaClient } from '../../clients/figma-client.js';
 import { GetFigmaPageOverviewInput } from '../figma/get-figma-page-overview.js';
 import { PageOverviewResponse, PageSummary } from '../../types/figma.js';
 import { CanvasNode } from '../../types/figma-api.js';
+import { getCacheManager } from '../registry.js';
+import { CacheManager } from '../../cache/cache-manager.js';
 
 /**
  * Handle getFigmaPageOverview tool execution
@@ -20,6 +22,22 @@ export async function handleGetFigmaPageOverview(
     figmaClient: FigmaClient
 ): Promise<PageOverviewResponse> {
     const { fileKey, version, pageId, limit = 100, offset = 0 } = input;
+
+    // Check cache for processed result
+    const cacheManager = getCacheManager();
+    const cacheKey = CacheManager.overviewKey(fileKey, version);
+    if (cacheManager) {
+        const cached = await cacheManager.get<PageSummary[]>(cacheKey);
+        if (cached) {
+            console.error(`[Cache] Found processed overview for ${fileKey}`);
+            const paginatedPages = cached.slice(offset, offset + limit);
+            return {
+                pages: paginatedPages,
+                totalCount: cached.length,
+                hasMore: offset + paginatedPages.length < cached.length,
+            };
+        }
+    }
 
     // Fetch file data from Figma API
     const fileData = await figmaClient.getFile(fileKey, { version });
@@ -37,13 +55,9 @@ export async function handleGetFigmaPageOverview(
     // Calculate estimated total count (before pagination)
     const totalCount = filteredPages.length;
 
-    // Apply pagination
-    const paginatedPages = filteredPages.slice(offset, offset + limit);
-
-    // Map to PageSummary format
-    const pages: PageSummary[] = paginatedPages.map((page) => {
+    // Map all filtered pages to PageSummary format for caching
+    const allSummaries: PageSummary[] = filteredPages.map((page) => {
         const nodeCount = page.children?.length || 0;
-        // CanvasNode doesn't have absoluteBoundingBox, calculate from children or use defaults
         const dimensions = { width: 0, height: 0 };
 
         return {
@@ -55,9 +69,17 @@ export async function handleGetFigmaPageOverview(
         };
     });
 
+    // Cache the full list of summaries
+    if (cacheManager) {
+        await cacheManager.set(cacheKey, allSummaries, 'overview');
+    }
+
+    // Apply pagination for the response
+    const paginatedSummaries = allSummaries.slice(offset, offset + limit);
+
     return {
-        pages,
-        totalCount,
-        hasMore: offset + pages.length < totalCount,
+        pages: paginatedSummaries,
+        totalCount: allSummaries.length,
+        hasMore: offset + paginatedSummaries.length < allSummaries.length,
     };
 }

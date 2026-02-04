@@ -18,6 +18,8 @@ import { NormalizedNode } from '../../types/normalized.js';
 import { normalizeNode } from '../../mappers/node-mapper.js';
 import { inferDesignTokens } from '../../mappers/token-mapper.js';
 import { handleGetFrameMap } from './get-frame-map-handler.js';
+import { getCacheManager } from '../registry.js';
+import { CacheManager } from '../../cache/cache-manager.js';
 
 /**
  * Handle getImplementationPlan tool execution
@@ -31,6 +33,17 @@ export async function handleGetImplementationPlan(
     figmaClient: FigmaClient
 ): Promise<ImplementationPlanResponse> {
     const { fileKey, version, targetFramework, pageId, componentIds } = input;
+
+    const cacheManager = getCacheManager();
+    const cacheKey = CacheManager.planKey(fileKey, version, { targetFramework, pageId, componentIds });
+
+    if (cacheManager) {
+        const cached = await cacheManager.get<ImplementationPlanResponse>(cacheKey);
+        if (cached) {
+            console.error(`[Cache] Found processed implementation plan for ${fileKey}`);
+            return cached;
+        }
+    }
 
     // Fetch file data from Figma API
     const fileData = await figmaClient.getFile(fileKey, { version });
@@ -120,7 +133,7 @@ export async function handleGetImplementationPlan(
         useFrames
     );
 
-    return {
+    const response: ImplementationPlanResponse = {
         steps,
         componentMappings,
         layoutGuidance,
@@ -129,6 +142,13 @@ export async function handleGetImplementationPlan(
         risks,
         notes,
     };
+
+    // Cache the processed plan
+    if (cacheManager) {
+        await cacheManager.set(cacheKey, response, 'plan');
+    }
+
+    return response;
 }
 
 /**
@@ -389,6 +409,9 @@ function generateComponentMappings(
         // Analyze styling approach
         const stylingApproach = analyzeStylingApproach(element, tokens, normalizedNode);
 
+        // Extract detailed visual styles
+        const visualStyles = extractVisualStyles(element);
+
         // Calculate complexity score
         const complexityScore = calculateComplexityScore(element, normalizedNode);
 
@@ -405,6 +428,7 @@ function generateComponentMappings(
             suggestedFilePath,
             layoutStrategy,
             stylingApproach,
+            visualStyles,
             complexityScore,
             props,
             relatedTokens,
@@ -974,4 +998,164 @@ function findRelatedTokens(
     }
 
     return relatedTokens.slice(0, 10);
+}
+
+/**
+ * Extract detailed visual styles from element
+ */
+function extractVisualStyles(
+    element: ComponentNode | ComponentSetNode | InstanceNode | FrameNode
+): ComponentMapping['visualStyles'] {
+    const colors: string[] = [];
+    const fonts: Array<{ family: string; size: number; weight: number }> = [];
+    let padding: string | undefined;
+    let gap: number | undefined;
+    let borderWidth: number | undefined;
+    let borderRadius: number | undefined;
+    let borderColor: string | undefined;
+    const shadows: string[] = [];
+    let hasImages = false;
+    let hasVectors = false;
+    let dimensions: { width: number; height: number } | undefined;
+    let position: { x: number; y: number } | undefined;
+
+    // Extract dimensions and position
+    if ('absoluteBoundingBox' in element && element.absoluteBoundingBox) {
+        const box = element.absoluteBoundingBox;
+        dimensions = { width: box.width, height: box.height };
+        position = { x: box.x, y: box.y };
+    }
+
+    // Extract colors from fills
+    if ('fills' in element && element.fills && Array.isArray(element.fills)) {
+        for (const fill of element.fills) {
+            if (fill.type === 'SOLID' && fill.color && fill.visible !== false) {
+                const hex = figmaColorToHex(fill.color);
+                if (!colors.includes(hex)) colors.push(hex);
+            } else if (fill.type === 'IMAGE') {
+                hasImages = true;
+            }
+        }
+    }
+
+    // Background color
+    if ('backgroundColor' in element && element.backgroundColor) {
+        const hex = figmaColorToHex(element.backgroundColor);
+        if (!colors.includes(hex)) colors.push(hex);
+    }
+
+    // Extract border info
+    if ('strokes' in element && element.strokes && Array.isArray(element.strokes) && element.strokes.length > 0) {
+        const stroke = element.strokes[0];
+        if (stroke.color) {
+            borderColor = figmaColorToHex(stroke.color);
+        }
+    }
+
+    if ('strokeWeight' in element && element.strokeWeight != null) {
+        borderWidth = element.strokeWeight;
+    }
+
+    if ('cornerRadius' in element && element.cornerRadius != null) {
+        borderRadius = element.cornerRadius;
+    }
+
+    // Extract layout spacing
+    if ('itemSpacing' in element && (element as any).itemSpacing != null) {
+        gap = (element as any).itemSpacing;
+    }
+
+    if ('paddingTop' in element) {
+        const el = element as any;
+        padding = `${el.paddingTop || 0}px ${el.paddingRight || 0}px ${el.paddingBottom || 0}px ${el.paddingLeft || 0}px`;
+    }
+
+    // Extract effects (shadows)
+    if ('effects' in element && (element as any).effects && Array.isArray((element as any).effects)) {
+        const effects = (element as any).effects;
+        for (const effect of effects) {
+            if (effect.type === 'DROP_SHADOW' && effect.visible !== false) {
+                const shadowStr = `${effect.offset?.x || 0}px ${effect.offset?.y || 0}px ${effect.radius}px ${effect.color ? figmaColorToHex(effect.color) : 'rgba(0,0,0,0.1)'}`;
+                shadows.push(shadowStr);
+            }
+        }
+    }
+
+    // Extract text styles from children (including mixed styles)
+    if ('children' in element && element.children) {
+        const vectorTypes = ['VECTOR', 'STAR', 'LINE', 'ELLIPSE', 'REGULAR_POLYGON', 'RECTANGLE'];
+
+        for (const child of element.children) {
+            // Check for vectors
+            if (vectorTypes.includes(child.type)) {
+                hasVectors = true;
+            }
+
+            if (child.type === 'TEXT' && 'style' in child) {
+                const textNode = child as any;
+
+                // Base text style
+                if (textNode.style) {
+                    const font = {
+                        family: textNode.style.fontFamily,
+                        size: textNode.style.fontSize,
+                        weight: textNode.style.fontWeight,
+                    };
+                    if (!fonts.some(f => f.family === font.family && f.size === font.size && f.weight === font.weight)) {
+                        fonts.push(font);
+                    }
+                }
+
+                // Mixed text styles (different weights/sizes in same text)
+                if (textNode.characterStyleOverrides && textNode.styleOverrideTable) {
+                    const table = textNode.styleOverrideTable;
+                    for (const key in table) {
+                        const override = table[key];
+                        if (override) {
+                            const mixedFont = {
+                                family: override.fontFamily || textNode.style?.fontFamily,
+                                size: override.fontSize || textNode.style?.fontSize,
+                                weight: override.fontWeight || textNode.style?.fontWeight,
+                            };
+                            if (!fonts.some(f => f.family === mixedFont.family && f.size === mixedFont.size && f.weight === mixedFont.weight)) {
+                                fonts.push(mixedFont);
+                            }
+                        }
+                    }
+                }
+
+                // Extract text colors
+                if (textNode.fills && Array.isArray(textNode.fills)) {
+                    for (const fill of textNode.fills) {
+                        if (fill.type === 'SOLID' && fill.color && fill.visible !== false) {
+                            const hex = figmaColorToHex(fill.color);
+                            if (!colors.includes(hex)) colors.push(hex);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return {
+        colors,
+        fonts,
+        spacing: { padding, gap },
+        borders: { width: borderWidth, radius: borderRadius, color: borderColor },
+        shadows,
+        hasImages,
+        hasVectors,
+        dimensions,
+        position,
+    };
+}
+
+/**
+ * Convert Figma color to hex string
+ */
+function figmaColorToHex(color: any): string {
+    const r = Math.round(color.r * 255);
+    const g = Math.round(color.g * 255);
+    const b = Math.round(color.b * 255);
+    return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
 }

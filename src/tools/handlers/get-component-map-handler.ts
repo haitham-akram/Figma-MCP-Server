@@ -13,6 +13,8 @@ import {
     InstanceNode,
 } from '../../types/figma-api.js';
 import { buildComponentHierarchy } from '../../mappers/node-mapper.js';
+import { getCacheManager } from '../registry.js';
+import { CacheManager } from '../../cache/cache-manager.js';
 
 /**
  * Maximum traversal depth (log warning beyond this)
@@ -33,47 +35,67 @@ export async function handleGetComponentMap(
 ): Promise<ComponentMapResponse> {
     const { fileKey, version, componentName, componentType, limit = 100, offset = 0 } = input;
 
-    // Fetch file data from Figma API
-    const fileData = await figmaClient.getFile(fileKey, { version });
+    const cacheManager = getCacheManager();
+    const cacheKey = CacheManager.componentsKey(fileKey, version);
 
-    // Collect all component nodes using BFS traversal
-    const allComponents = traverseForComponents(fileData.document);
+    // Try to get processed components from cache
+    let componentInfos: ComponentInfo[] | null = null;
+    if (cacheManager) {
+        componentInfos = await cacheManager.get<ComponentInfo[]>(cacheKey);
+        if (componentInfos) {
+            console.error(`[Cache] Found processed components for ${fileKey}`);
+        }
+    }
 
-    // Build component hierarchy (parentId relationships)
-    const hierarchy = buildComponentHierarchy([fileData.document]);
+    // If not in cache, fetch and process
+    if (!componentInfos) {
+        // Fetch file data from Figma API
+        const fileData = await figmaClient.getFile(fileKey, { version });
 
-    // Map to ComponentInfo format
-    const componentInfos: ComponentInfo[] = allComponents.map((node) => {
-        const parentId = hierarchy.get(node.id);
-        const dimensions = node.absoluteBoundingBox
-            ? { width: node.absoluteBoundingBox.width, height: node.absoluteBoundingBox.height }
-            : { width: 0, height: 0 };
+        // Collect all component nodes using BFS traversal
+        const allComponents = traverseForComponents(fileData.document);
 
-        // Extract variants (metadata-first, fallback to name parsing)
-        const variants = extractVariants(node, fileData.components, fileData.componentSets);
+        // Build component hierarchy (parentId relationships)
+        const hierarchy = buildComponentHierarchy([fileData.document]);
 
-        // Extract children IDs
-        const childrenIds = 'children' in node && node.children
-            ? node.children
-                .filter((child): child is ComponentNode | ComponentSetNode | InstanceNode =>
-                    child.type === 'COMPONENT' || child.type === 'COMPONENT_SET' || child.type === 'INSTANCE'
-                )
-                .map((child) => child.id)
-            : [];
+        // Map to ComponentInfo format
+        componentInfos = allComponents.map((node) => {
+            const parentId = hierarchy.get(node.id);
+            const dimensions = node.absoluteBoundingBox
+                ? { width: node.absoluteBoundingBox.width, height: node.absoluteBoundingBox.height }
+                : { width: 0, height: 0 };
 
-        return {
-            id: node.id,
-            name: node.name,
-            description: 'description' in node ? node.description : undefined,
-            type: node.type as 'COMPONENT' | 'COMPONENT_SET' | 'INSTANCE',
-            parentId,
-            childrenIds,
-            variants,
-            dimensions,
-        };
-    });
+            // Extract variants (metadata-first, fallback to name parsing)
+            const variants = extractVariants(node, fileData.components, fileData.componentSets);
 
-    // Apply filters
+            // Extract children IDs
+            const childrenIds = 'children' in node && node.children
+                ? node.children
+                    .filter((child): child is ComponentNode | ComponentSetNode | InstanceNode =>
+                        child.type === 'COMPONENT' || child.type === 'COMPONENT_SET' || child.type === 'INSTANCE'
+                    )
+                    .map((child) => child.id)
+                : [];
+
+            return {
+                id: node.id,
+                name: node.name,
+                description: 'description' in node ? node.description : undefined,
+                type: node.type as 'COMPONENT' | 'COMPONENT_SET' | 'INSTANCE',
+                parentId,
+                childrenIds,
+                variants,
+                dimensions,
+            };
+        });
+
+        // Cache the processed components
+        if (cacheManager) {
+            await cacheManager.set(cacheKey, componentInfos, 'components');
+        }
+    }
+
+    // Apply filters to the processed (cached or fresh) components
     let filteredComponents = componentInfos;
 
     if (componentName) {

@@ -6,7 +6,17 @@ This MCP server provides structured access to Figma design data for AI-assisted 
 
 ## Available Tools
 
-### 1. `getFigmaPageOverview`
+### 1. `getDocumentation`
+
+**Purpose:** Get comprehensive usage instructions for all Figma MCP tools.
+
+**When to use:**
+
+- When you need guidance on using other tools
+- Understanding response formats and best practices
+- First tool to call if unsure about MCP functionality
+
+### 2. `getFigmaPageOverview`
 
 **Purpose:** Get high-level file structure before detailed queries.
 
@@ -117,7 +127,118 @@ This MCP server provides structured access to Figma design data for AI-assisted 
 - Tokens represent extracted values from Figma styles and common patterns
 - Not all design values will be tokenized (only reusable/systematic ones)
 
-### 4. `getImplementationPlan`
+### 4. `getComponentStyles`
+
+**Purpose:** Get detailed styling information for a specific component/frame including all visual properties, colors, fonts, images, and effects.
+
+**Output Structure:**
+
+```typescript
+{
+  componentId: string
+  componentName: string
+  componentType: string
+  styles: {
+    id: string
+    name: string
+    type: string
+    dimensions?: { width, height, x, y }
+    backgroundColor?: string  // hex color
+    fills?: Array<{
+      type: string
+      color?: string          // hex color
+      opacity?: number
+      visible?: boolean
+      imageUrl?: string       // for IMAGE fills
+    }>
+    strokes?: Array<{
+      type: string
+      color?: string          // hex color
+      opacity?: number
+    }>
+    strokeWeight?: number
+    cornerRadius?: number
+    text?: {                  // for TEXT nodes
+      content: string
+      fontFamily: string
+      fontWeight: number
+      fontSize: number
+      lineHeight: string
+      letterSpacing: number
+      textAlign: string
+      textColor: string       // hex color
+      mixedStyles?: Array<{   // MIXED FONT STYLES IN SAME TEXT
+        startIndex: number
+        endIndex: number
+        fontFamily?: string
+        fontWeight?: number
+        fontSize?: number
+        color?: string
+      }>
+    }
+    vector?: {                // for vector/icon elements
+      isVector: boolean
+      vectorType: string
+      hasExportSettings: boolean
+    }
+    effects?: Array<{         // shadows, blurs
+      type: string
+      radius: number
+      color?: string
+      offset?: { x, y }
+    }>
+    layoutMode?: 'NONE' | 'HORIZONTAL' | 'VERTICAL'
+    padding?: { top, right, bottom, left }
+    itemSpacing?: number
+    opacity?: number
+    children?: ElementStyle[] // recursive child styles
+  }
+  images: Array<{
+    nodeId: string
+    nodeName: string
+    imageRef?: string          // Figma image reference ID
+    imageUrl: string            // URL or reference string
+  }>
+  vectors: Array<{             // ALL vector elements (icons, shapes)
+    nodeId: string
+    nodeName: string
+    vectorType: string          // VECTOR, STAR, LINE, ELLIPSE, etc.
+    canExport: boolean
+  }>
+  colors: Array<{
+    value: string             // hex color
+    usage: string             // "fill", "stroke", "text", "shadow"
+    count: number
+  }>
+  fonts: Array<{
+    family: string
+    weight: number
+    size: number
+    usage: string             // "heading-1", "body", etc.
+  }>
+}
+```
+
+**When to use:**
+
+- When you need exact visual details for a component
+- To understand all colors, fonts, spacing used in a specific element
+- Before implementing visual styling in code
+- To identify images and icons that need to be extracted
+- **To detect mixed font styles** (e.g., bold words in normal text)
+- **To find all vector elements** that can be exported as SVG icons
+
+**Key principles:**
+
+- Call this AFTER identifying components with getFrameMap/getComponentMap
+- Use the extracted color palette to create CSS variables
+- Font information includes family, size, weight for accurate implementation
+- **mixedStyles** array shows different font weights/sizes within the same text
+- **vectors** array lists all icon/shape elements that should be exported
+- Image detection helps identify assets that need to be exported from Figma
+- **Dimensions include x, y position** for accurate placement
+
+### 5. `getImplementationPlan`
 
 **Purpose:** Get comprehensive implementation guidance with component-to-code mappings.
 
@@ -148,6 +269,28 @@ This MCP server provides structured access to Figma design data for AI-assisted 
       recommendations: string[]
       tokenUsage: string[]        // Which tokens to use
       complexityNotes?: string
+    }
+    visualStyles?: {              // DETAILED VISUAL INFO
+      colors: string[]            // All hex colors used
+      fonts: Array<{              // All fonts used
+        family: string
+        size: number
+        weight: number
+      }>
+      spacing: {
+        padding?: string
+        gap?: number
+      }
+      borders: {
+        width?: number
+        radius?: number
+        color?: string
+      }
+      shadows: string[]           // CSS shadow strings
+      hasImages: boolean
+      hasVectors: boolean         // Has icons/shapes
+      dimensions?: { width, height }
+      position?: { x, y }         // Absolute position
     }
     complexityScore: number       // 0-10 (higher = more complex)
     props: Array<{
@@ -203,13 +346,72 @@ This MCP server provides structured access to Figma design data for AI-assisted 
 - Understanding layout strategies and complexity
 - Identifying component props and relationships
 - Getting framework-specific guidance (via `targetFramework` parameter)
+- NOW includes detailed visualStyles for each component (colors, fonts, spacing, borders, shadows)
 
 **Key principles:**
 
 - Use as planning tool, not code generator
-- `componentMappings` provide implementation guidance, not complete code
+- `componentMappings` provide implementation guidance with visual details
+- `visualStyles` field now contains exact colors, fonts, and spacing for styling
 - `openQuestions` must be resolved before full implementation
 - `risks` highlight potential implementation challenges
+- Combine with `getComponentStyles` for even more detailed information per component
+
+---
+
+## Best Practices for Accurate Implementation
+
+### Getting Complete Visual Information
+
+1. **Always check `visualStyles` in componentMappings** - This now includes:
+   - All colors used (hex format ready for CSS)
+   - All fonts with family, size, and weight
+   - Spacing values (padding, gap)
+   - Border properties (width, radius, color)
+   - Shadow effects as CSS strings
+   - Image detection flag
+
+2. **Use `getComponentStyles` for individual components** when you need:
+   - Complete hierarchical style information with children
+   - Exact text content and styling
+   - Image URLs (when available)
+   - Full effect/shadow details
+   - All layout properties
+
+3. **Workflow for accurate implementation:**
+   ```
+   getFigmaPageOverview → identify pages
+   ↓
+   getFrameMap/getComponentMap → identify components
+   ↓
+   getImplementationPlan → get structure + visualStyles for all
+   ↓
+   getComponentStyles → get detailed styles for specific components
+   ↓
+   getDesignTokens → extract reusable design values
+   ↓
+   Implement with accurate colors, fonts, spacing, borders
+   ```
+
+### Common Issues and Solutions
+
+**Problem:** "Generated code has structure but wrong colors/fonts"
+**Solution:** Use the `visualStyles` field in componentMappings or call `getComponentStyles` for the specific component ID to get exact hex colors and font specifications.
+
+**Problem:** "Text has mixed font weights but only one weight is applied"
+**Solution:** Use `getComponentStyles` and check the `text.mixedStyles` array. This shows different font weights/sizes within the same text element with exact character ranges.
+
+**Problem:** "Icons and images are missing"
+**Solution:** Check `hasImages` and `hasVectors` flags in visualStyles. Use `getComponentStyles` to see the `vectors` array (all icons/shapes) and `images` array (all bitmap images with imageRef IDs).
+
+**Problem:** "Component dimensions don't match Figma"
+**Solution:** Check `visualStyles.dimensions` for exact width/height from Figma. Use `visualStyles.position` for x,y coordinates if absolute positioning is needed.
+
+**Problem:** "Spacing doesn't match design"
+**Solution:** Look at `visualStyles.spacing` for padding and gap values, or check the `layoutStrategy.details` for itemSpacing in auto-layout frames.
+
+**Problem:** "Components are misaligned or wrong arrangement"
+**Solution:** Use `visualStyles.position` (x, y coordinates) to understand relative positioning. Check parent's `layoutMode` (HORIZONTAL/VERTICAL) and `itemSpacing` for proper flex/grid arrangement.
 
 ---
 

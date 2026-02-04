@@ -84,10 +84,32 @@ export class CacheManager {
     }
 
     /**
+     * Generate cache key for page overview
+     */
+    static overviewKey(fileKey: string, version?: string): string {
+        return version ? `${fileKey}:${version}:overview` : `${fileKey}:latest:overview`;
+    }
+
+    /**
      * Generate cache key for components
      */
     static componentsKey(fileKey: string, version?: string, filters?: Record<string, unknown>): string {
         const base = version ? `${fileKey}:${version}:components` : `${fileKey}:latest:components`;
+        if (filters && Object.keys(filters).length > 0) {
+            const filterStr = Object.entries(filters)
+                .sort(([a], [b]) => a.localeCompare(b))
+                .map(([k, v]) => `${k}=${JSON.stringify(v)}`)
+                .join(',');
+            return `${base}:${filterStr}`;
+        }
+        return base;
+    }
+
+    /**
+     * Generate cache key for frames
+     */
+    static framesKey(fileKey: string, version?: string, filters?: Record<string, unknown>): string {
+        const base = version ? `${fileKey}:${version}:frames` : `${fileKey}:latest:frames`;
         if (filters && Object.keys(filters).length > 0) {
             const filterStr = Object.entries(filters)
                 .sort(([a], [b]) => a.localeCompare(b))

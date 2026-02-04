@@ -54,6 +54,9 @@ export interface Paint {
     opacity?: number;
     color?: FigmaColor;
     blendMode?: string;
+    imageRef?: string;
+    scaleMode?: string;
+    imageTransform?: number[][];
 }
 
 /**
@@ -207,6 +210,8 @@ export interface TextNode extends BaseNode {
     style?: TypeStyle;
     fills?: Paint[];
     absoluteBoundingBox?: Rect;
+    characterStyleOverrides?: number[];
+    styleOverrideTable?: { [key: number]: Partial<TypeStyle> };
 }
 
 /**
@@ -218,6 +223,9 @@ export interface VectorNode extends BaseNode {
     fills?: Paint[];
     strokes?: Paint[];
     strokeWeight?: number;
+    strokeAlign?: 'INSIDE' | 'OUTSIDE' | 'CENTER';
+    vectorPaths?: any[];
+    exportSettings?: any[];
 }
 
 /**

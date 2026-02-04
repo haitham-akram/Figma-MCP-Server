@@ -224,6 +224,18 @@ export interface ComponentMapping {
         tokenUsage: string[];
         complexityNotes?: string;
     };
+    /** Detailed visual styling information */
+    visualStyles?: {
+        colors: string[];
+        fonts: Array<{ family: string; size: number; weight: number }>;
+        spacing: { padding?: string; gap?: number };
+        borders: { width?: number; radius?: number; color?: string };
+        shadows: string[];
+        hasImages: boolean;
+        hasVectors: boolean;
+        dimensions?: { width: number; height: number };
+        position?: { x: number; y: number };
+    };
     /** Complexity score (0-10, higher = more complex) */
     complexityScore: number;
     /** Props/attributes to implement */

@@ -113,9 +113,13 @@ function traverseForComponents(
     const components: Array<ComponentNode | ComponentSetNode | InstanceNode> = [];
     const queue: Array<{ node: FigmaNode; depth: number }> = [{ node: root, depth: 0 }];
     let maxDepthSeen = 0;
+    const typeCounts: Record<string, number> = {};
 
     while (queue.length > 0) {
         const { node, depth } = queue.shift()!;
+
+        // Track node types
+        typeCounts[node.type] = (typeCounts[node.type] || 0) + 1;
 
         // Track max depth
         if (depth > maxDepthSeen) {
@@ -139,16 +143,19 @@ function traverseForComponents(
         }
 
         // Enqueue children (continue traversal even beyond warning depth)
-        if ('children' in node && node.children) {
+        if ('children' in node && Array.isArray(node.children)) {
             for (const child of node.children) {
                 queue.push({ node: child, depth: depth + 1 });
             }
         }
     }
 
-    console.log(
+    console.error(
         `Component traversal complete: found ${components.length} components, max depth: ${maxDepthSeen}`
     );
+    if (components.length === 0) {
+        console.error(`Node type distribution: ${JSON.stringify(typeCounts)}`);
+    }
 
     return components;
 }

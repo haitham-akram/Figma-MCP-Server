@@ -10,8 +10,10 @@ import { TOOL_DEFINITIONS } from './definitions.js';
 import { FigmaClient, FigmaApiError } from '../clients/figma-client.js';
 import { handleGetFigmaPageOverview } from './handlers/get-figma-page-overview-handler.js';
 import { handleGetComponentMap } from './handlers/get-component-map-handler.js';
+import { handleGetFrameMap } from './handlers/get-frame-map-handler.js';
 import { handleGetDesignTokens } from './handlers/get-design-tokens-handler.js';
 import { handleGetImplementationPlan } from './handlers/get-implementation-plan-handler.js';
+import { getDocumentationHandler } from './handlers/get-docs-handler.js';
 import { config, CACHE_CONFIG } from '../config.js';
 import { CacheManager } from '../cache/cache-manager.js';
 
@@ -47,8 +49,8 @@ export function initializeFigmaClient(): void {
         cacheManager
     );
 
-    console.log('Figma client initialized successfully');
-    console.log(`Cache: ${CACHE_CONFIG.enabled ? 'ENABLED' : 'DISABLED'} (max size: ${CACHE_CONFIG.maxSize}, default TTL: ${CACHE_CONFIG.defaultTTL}s)`);
+    console.error('Figma client initialized successfully');
+    console.error(`Cache: ${CACHE_CONFIG.enabled ? 'ENABLED' : 'DISABLED'} (max size: ${CACHE_CONFIG.maxSize}, default TTL: ${CACHE_CONFIG.defaultTTL}s)`);
 }
 
 /**
@@ -138,12 +140,20 @@ export async function executeTool(
         let result: any;
 
         switch (name) {
+            case 'getDocumentation':
+                result = await getDocumentationHandler();
+                break;
+
             case 'getFigmaPageOverview':
                 result = await handleGetFigmaPageOverview(params as any, figmaClient);
                 break;
 
             case 'getComponentMap':
                 result = await handleGetComponentMap(params as any, figmaClient);
+                break;
+
+            case 'getFrameMap':
+                result = await handleGetFrameMap(params as any, figmaClient);
                 break;
 
             case 'getDesignTokens':

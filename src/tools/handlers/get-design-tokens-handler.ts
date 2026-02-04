@@ -35,12 +35,12 @@ export async function handleGetDesignTokens(
     // Traverse and normalize all nodes using BFS
     const normalizedNodes = traverseAndNormalize(fileData.document);
 
-    console.log(`Normalized ${normalizedNodes.length} nodes for token inference`);
+    console.error(`Normalized ${normalizedNodes.length} nodes for token inference`);
 
     // Infer design tokens from normalized nodes
     const allTokens = inferDesignTokens(normalizedNodes);
 
-    console.log(`Inferred ${allTokens.length} design tokens`);
+    console.error(`Inferred ${allTokens.length} design tokens`);
 
     // Apply filters
     let filteredTokens = allTokens;
@@ -111,7 +111,7 @@ function traverseAndNormalize(root: FigmaNode): NormalizedNode[] {
         }
     }
 
-    console.log(
+    console.error(
         `Node normalization complete: ${normalizedNodes.length} nodes normalized, max depth: ${maxDepthSeen}`
     );
 

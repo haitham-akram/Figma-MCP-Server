@@ -108,7 +108,13 @@ export type FigmaNodeType =
     | 'SLICE'
     | 'COMPONENT'
     | 'COMPONENT_SET'
-    | 'INSTANCE';
+    | 'INSTANCE'
+    | 'SECTION'
+    | 'STICKY'
+    | 'SHAPE_WITH_TEXT'
+    | 'CONNECTOR'
+    | 'TABLE'
+    | 'TABLE_CELL';
 
 /**
  * Base node properties shared by all node types
@@ -242,6 +248,14 @@ export interface SliceNode extends BaseNode {
 }
 
 /**
+ * Section node (container for other nodes)
+ */
+export interface SectionNode extends NodeWithChildren {
+    type: 'SECTION';
+    fills?: Paint[];
+}
+
+/**
  * Union type of all node types
  */
 export type FigmaNode =
@@ -255,7 +269,8 @@ export type FigmaNode =
     | VectorNode
     | GroupNode
     | BooleanOperationNode
-    | SliceNode;
+    | SliceNode
+    | SectionNode;
 
 /**
  * Component metadata

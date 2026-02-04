@@ -47,7 +47,7 @@ export type GetDesignTokensError = FigmaError;
 export const getDesignTokensTool: Tool = {
     name: 'getDesignTokens',
     description:
-        'Extract design tokens (colors, typography, spacing, shadows, etc.) from a Figma file in an LLM-optimized format. Tokens are organized by category with clear names, values, descriptions, and usage guidance. Loosely aligned with Style Dictionary format but optimized for LLM consumption.',
+        'Extract design tokens (colors, typography, spacing, shadows, etc.) from a Figma file. IMPORTANT: Follow formatting rules in getDocumentation tool output for your response.',
     inputSchema: {
         type: 'object',
         properties: {
@@ -82,6 +82,6 @@ export const getDesignTokensTool: Tool = {
             },
         },
         required: ['fileKey'],
-        additionalProperties: false,
+        additionalProperties: true,
     },
 };

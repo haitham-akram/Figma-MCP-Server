@@ -47,7 +47,7 @@ export type GetComponentMapError = FigmaError;
 export const getComponentMapTool: Tool = {
     name: 'getComponentMap',
     description:
-        'Get a flattened map of all components in a Figma file, including component hierarchy with parent/child relationships, variants, and dimensions. Components are returned in a flat structure with parentId references for efficient lookup without deep nesting.',
+        'Get a flattened map of all components in a Figma file. IMPORTANT: Follow formatting rules in getDocumentation tool output for your response.',
     inputSchema: {
         type: 'object',
         properties: {
@@ -83,6 +83,6 @@ export const getComponentMapTool: Tool = {
             },
         },
         required: ['fileKey'],
-        additionalProperties: false,
+        additionalProperties: true,
     },
 };

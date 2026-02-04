@@ -7,7 +7,6 @@ import { FigmaClient } from '../../clients/figma-client.js';
 import { GetComponentStylesInput } from '../figma/get-component-styles.js';
 import { FigmaNode, Paint, TypeStyle, Effect, FigmaColor } from '../../types/figma-api.js';
 import { getCacheManager } from '../registry.js';
-import { CacheManager } from '../../cache/cache-manager.js';
 
 /**
  * Detailed style information for an element

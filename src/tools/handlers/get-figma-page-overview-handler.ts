@@ -30,11 +30,15 @@ export async function handleGetFigmaPageOverview(
         const cached = await cacheManager.get<PageSummary[]>(cacheKey);
         if (cached) {
             console.error(`[Cache] Found processed overview for ${fileKey}`);
-            const paginatedPages = cached.slice(offset, offset + limit);
+            // Apply pageId filter after cache retrieval
+            const filteredPages = pageId
+                ? cached.filter((page) => page.id === pageId)
+                : cached;
+            const paginatedPages = filteredPages.slice(offset, offset + limit);
             return {
                 pages: paginatedPages,
-                totalCount: cached.length,
-                hasMore: offset + paginatedPages.length < cached.length,
+                totalCount: filteredPages.length,
+                hasMore: offset + paginatedPages.length < filteredPages.length,
             };
         }
     }
@@ -47,16 +51,9 @@ export async function handleGetFigmaPageOverview(
         (node): node is CanvasNode => node.type === 'CANVAS'
     ) || [];
 
-    // Apply pageId filter if specified
-    const filteredPages = pageId
-        ? allPages.filter((page) => page.id === pageId)
-        : allPages;
-
-    // Calculate estimated total count (before pagination)
-    const totalCount = filteredPages.length;
-
-    // Map all filtered pages to PageSummary format for caching
-    const allSummaries: PageSummary[] = filteredPages.map((page) => {
+    // Map all pages to PageSummary format for caching (without filtering)
+    // This enables cache reuse across different pageId filter values
+    const allSummaries: PageSummary[] = allPages.map((page) => {
         const nodeCount = page.children?.length || 0;
         const dimensions = { width: 0, height: 0 };
 
@@ -69,17 +66,22 @@ export async function handleGetFigmaPageOverview(
         };
     });
 
-    // Cache the full list of summaries
+    // Cache the full list of summaries (all pages, unfiltered)
     if (cacheManager) {
         await cacheManager.set(cacheKey, allSummaries, 'overview');
     }
 
+    // Apply pageId filter after caching
+    const filteredSummaries = pageId
+        ? allSummaries.filter((page) => page.id === pageId)
+        : allSummaries;
+
     // Apply pagination for the response
-    const paginatedSummaries = allSummaries.slice(offset, offset + limit);
+    const paginatedSummaries = filteredSummaries.slice(offset, offset + limit);
 
     return {
         pages: paginatedSummaries,
-        totalCount: allSummaries.length,
-        hasMore: offset + paginatedSummaries.length < allSummaries.length,
+        totalCount: filteredSummaries.length,
+        hasMore: offset + paginatedSummaries.length < filteredSummaries.length,
     };
 }
